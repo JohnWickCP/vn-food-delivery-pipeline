@@ -10,6 +10,7 @@ volumes:
   spark-checkpoints:
   airflow-postgres-data:
   airflow-logs:
+  clickhouse-data:
 
 services:
   # ─────────────────────────────────────────────
@@ -329,6 +330,37 @@ services:
     networks:
       - food-delivery-net
     command: scheduler
+
+  # ─────────────────────────────────────────────
+  # CLICKHOUSE
+  # ─────────────────────────────────────────────
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.1
+    container_name: clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"   # HTTP (dbt + queries)
+      - "9900:9000"   # Native TCP — mapped to 9900 to avoid conflict with MinIO 9000
+    environment:
+      CLICKHOUSE_DB: food_delivery
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse/init:/docker-entrypoint-initdb.d
+    networks:
+      - food-delivery-net
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # ─────────────────────────────────────────────
   # KAFKA UI
