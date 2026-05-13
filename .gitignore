@@ -1,0 +1,45 @@
+# Environment
+.env
+*.env.local
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/profiles.yml
+
+# Airflow
+airflow/logs/
+airflow/plugins/__pycache__/
+
+# Spark
+spark/checkpoints/
+*.jar
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific (không commit lên GitHub public)
+PROJECT1_MASTER_PLAN.md
+docs/architecture.png
+docs/data_model.png
+docs/metrics_results.md
