@@ -4,10 +4,11 @@
 
 Real-time food delivery analytics pipeline (GrabFood/ShopeeFood style).
 - **Goal:** Build a portfolio project with measurable CV metrics
-- **Master plan:** See `PROJECT1_MASTER_PLAN.md` for full architecture, tech stack, commit plan
-- **Phase tracking:** 42 commits across 6 phases (infra → generator → spark → airflow → dbt → observability)
+- **Master plan:** See `PROJECT1_MASTER_PLAN_v2.md` for full architecture, tech stack, commit plan
+- **Phase tracking:** 45 commits across 6 phases (infra → generator → spark → clickhouse/load → dbt → observability)
+- **Plan is a guide, not a contract** — expect commits to shift, be added, or renamed as implementation reveals real constraints
 
-Stack: Kafka 3.6 · PySpark 3.5 · Airflow 2.8 · dbt-core 1.7 · PostgreSQL 15 · Grafana 10 · Docker Compose · Python 3.11
+Stack: Kafka 3.6 · PySpark 3.5 · MinIO (S3-compatible) · ClickHouse 24.x · Airflow 2.8 · dbt-core 1.7 (dbt-clickhouse) · Grafana 10 · Prometheus · Docker Compose · Python 3.11
 
 ## Collaboration Style
 
@@ -30,14 +31,15 @@ Stack: Kafka 3.6 · PySpark 3.5 · Airflow 2.8 · dbt-core 1.7 · PostgreSQL 15 
 
 ## Technical Constraints (luôn nhớ khi code)
 
-- Port assignments: Kafka 9092/29092, Zookeeper 2181, PG 5432, Airflow 8080, Spark 8081/7077, Grafana 3000, Prometheus 9090
-- Spark: luôn có watermark + checkpointLocation + trigger 500ms + foreachBatch cho JDBC
-- Kafka: INTERNAL + EXTERNAL listeners, manual offset commit
-- dbt: staging = rename+cast only, intermediate = joins/logic, marts = analytics-ready
+- Port assignments: Kafka 9092/29092, Zookeeper 2181, Kafka-UI 8090, MinIO 9000/9001, Spark 8081/7077, Airflow 8080, ClickHouse 8123/9900, Grafana 3000, Prometheus 9090
+- Spark: luôn có watermark + checkpointLocation + trigger 500ms; `dropDuplicates` phải include watermark column (`event_timestamp`) để bound state; write sang MinIO dùng `format("parquet")` hoặc `format("delta")`
+- Kafka: INTERNAL://kafka:29092 + EXTERNAL://localhost:9092, `failOnDataLoss=false`, checkpoint để track offset
+- ClickHouse: MergeTree, `LowCardinality` cho enum fields, port native 9900 (external) để tránh conflict MinIO 9000; dbt dùng HTTP port 8123
+- dbt: staging = rename+cast only, intermediate = joins/logic, marts = analytics-ready; `dbt-clickhouse` package
 - Git: conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `perf:`, `refactor:`), 1 commit = 1 việc cụ thể
-- **Không commit:** `.env`, `PROJECT1_MASTER_PLAN.md`, `venv/`, `__pycache__/`
+- **Không commit:** `.env`, `PROJECT1_MASTER_PLAN_v2.md`, `venv/`, `__pycache__/`
 
 ## Current Phase
 
-Xem `PROJECT1_MASTER_PLAN.md` → section "Commit Plan" để biết đang ở commit nào.
+Xem `PROJECT1_MASTER_PLAN_v2.md` → section "Commit Plan" để biết đang ở commit nào.
 Khi bắt đầu session mới, nói "đang ở commit X" để tôi biết context.
