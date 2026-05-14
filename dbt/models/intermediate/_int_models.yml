@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: int_order_payments
+    description: "Orders joined with payments. LEFT JOIN — orders without payment have NULL payment fields."
+    columns:
+      - name: order_id
+        tests:
+          - unique
+          - not_null
+
+  - name: int_delivery_metrics
+    description: "Per-rider daily utilization and speed metrics derived from GPS pings."
+    columns:
+      - name: rider_id
+        tests:
+          - not_null
+      - name: event_date
+        tests:
+          - not_null
