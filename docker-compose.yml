@@ -394,7 +394,7 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
-      - ./dbt:/opt/airflow/dbt:ro
+      - ./dbt:/opt/airflow/dbt
       - airflow-logs:/opt/airflow/logs
     networks:
       - food-delivery-net
@@ -430,7 +430,7 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
-      - ./dbt:/opt/airflow/dbt:ro
+      - ./dbt:/opt/airflow/dbt
       - airflow-logs:/opt/airflow/logs
     networks:
       - food-delivery-net
@@ -443,6 +443,11 @@ services:
     image: clickhouse/clickhouse-server:24.1
     container_name: clickhouse
     restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - "8123:8123"   # HTTP (dbt + queries)
       - "9900:9000"   # Native TCP — mapped to 9900 to avoid conflict with MinIO 9000

@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS food_delivery.raw_orders (
     event_timestamp   DateTime64(3, 'UTC'),
     _ingested_at      DateTime DEFAULT now()
 )
-ENGINE = MergeTree()
+ENGINE = ReplacingMergeTree(_ingested_at)
 PARTITION BY toYYYYMM(placed_at)
 ORDER BY (city, placed_at, order_id)
 SETTINGS index_granularity = 8192;
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS food_delivery.raw_payments (
     event_timestamp         DateTime64(3, 'UTC'),
     _ingested_at            DateTime DEFAULT now()
 )
-ENGINE = MergeTree()
+ENGINE = ReplacingMergeTree(_ingested_at)
 PARTITION BY toYYYYMM(processed_at)
 ORDER BY (processed_at, payment_id)
 SETTINGS index_granularity = 8192;
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS food_delivery.raw_rider_events (
     event_timestamp DateTime64(3, 'UTC'),
     _ingested_at    DateTime DEFAULT now()
 )
-ENGINE = MergeTree()
+ENGINE = ReplacingMergeTree(_ingested_at)
 PARTITION BY toYYYYMM(event_timestamp)
 ORDER BY (city, event_timestamp, rider_id)
 SETTINGS index_granularity = 8192;
