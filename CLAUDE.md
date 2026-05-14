@@ -5,7 +5,7 @@
 Real-time food delivery analytics pipeline (GrabFood/ShopeeFood style).
 - **Goal:** Build a portfolio project with measurable CV metrics
 - **Master plan:** See `PROJECT1_MASTER_PLAN_v2.md` for full architecture, tech stack, commit plan
-- **Phase tracking:** 45 commits across 6 phases (infra → generator → spark → clickhouse/load → dbt → observability)
+- **Phase tracking:** 48 commits across 6 phases (infra → generator → spark → clickhouse/load → dbt → observability)
 - **Plan is a guide, not a contract** — expect commits to shift, be added, or renamed as implementation reveals real constraints
 
 Stack: Kafka 3.6 · PySpark 3.5 · MinIO (S3-compatible) · ClickHouse 24.x · Airflow 2.8 · dbt-core 1.7 (dbt-clickhouse) · Grafana 10 · Prometheus · Docker Compose · Python 3.11
@@ -17,6 +17,7 @@ Stack: Kafka 3.6 · PySpark 3.5 · MinIO (S3-compatible) · ClickHouse 24.x · A
 - **Không giải thích những gì tôi đã biết.** Assume tôi hiểu Python, SQL cơ bản. Chỉ giải thích khi tôi hỏi hoặc khi concept thực sự phức tạp.
 - **Ngắn gọn.** Không cần summary cuối response. Code tự nói lên. Nếu tôi cần giải thích thêm tôi sẽ hỏi.
 - **Tiếng Việt** cho conversation, tiếng Anh cho code/comments/commit messages.
+- **Ghi nhớ lỗi và fix.** Mỗi khi phát hiện bug, misconfiguration, hoặc gotcha — dù tự tìm hay được báo — phải lưu ngay vào memory (`feedback_docker_compose_gotchas.md` hoặc file phù hợp). Ghi: lỗi gì, tại sao xảy ra, fix như nào, áp dụng ở đâu.
 
 ## Shortcuts (dùng trong chat để tránh viết lại)
 
