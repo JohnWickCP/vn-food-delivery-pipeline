@@ -5,6 +5,9 @@ import logging
 import random
 from datetime import datetime, timezone
 from uuid import uuid4
+from zoneinfo import ZoneInfo
+
+_VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 from faker import Faker
 
@@ -42,6 +45,17 @@ FOOD_MENU: list[tuple[str, int]] = [
 DELIVERY_FEES = [15_000, 20_000, 25_000, 30_000, 35_000]
 DISCOUNT_OPTIONS = [0, 0, 0, 0, 10_000, 20_000, 30_000, 50_000]
 
+# Realistic final status distribution for food delivery
+# In production each transition would be a separate event; here we assign final state at emit time
+_STATUS_WEIGHTS = {
+    "delivered": 65,
+    "cancelled": 12,
+    "picked_up": 8,
+    "preparing": 8,
+    "confirmed": 5,
+    "placed": 2,
+}
+
 # Pre-generate a pool of restaurant IDs — restaurants are reused across orders
 RESTAURANT_POOL = [uuid4() for _ in range(500)]
 
@@ -52,7 +66,7 @@ class OrderProducer(BaseProducer):
         self.order_queue = order_queue
 
     def _current_rate(self) -> int:
-        hour = datetime.now().hour
+        hour = datetime.now(_VN_TZ).hour
         for start, end in config.PEAK_HOURS:
             if start <= hour < end:
                 return config.ORDERS_PER_MIN_PEAK
@@ -83,7 +97,10 @@ class OrderProducer(BaseProducer):
             rider_id=random.choice(config.RIDER_POOL),
             city=city,
             district=district,
-            status="placed",
+            status=random.choices(
+                list(_STATUS_WEIGHTS.keys()),
+                weights=list(_STATUS_WEIGHTS.values()),
+            )[0],
             items=items,
             subtotal_vnd=subtotal,
             delivery_fee_vnd=delivery_fee,

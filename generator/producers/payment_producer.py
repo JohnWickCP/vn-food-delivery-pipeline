@@ -29,8 +29,8 @@ class PaymentProducer(BaseProducer):
         # Cash payments have no gateway transaction ID
         gateway_id = None if method == "cash" else f"TXN{random.randint(10**9, 10**10 - 1)}"
         now = datetime.now(timezone.utc)
-        # Payment processed 1–5 min after order
-        processed_at = now + timedelta(minutes=random.uniform(1, 5))
+        # Payment was processed 10s–3min before this event was emitted
+        processed_at = now - timedelta(seconds=random.uniform(10, 180))
 
         return Payment(
             order_id=UUID(order_id),
@@ -45,7 +45,13 @@ class PaymentProducer(BaseProducer):
     async def run(self) -> None:
         logger.info("PaymentProducer started")
         while True:
-            order_id, method, amount = await self.order_queue.get()
+            try:
+                order_id, method, amount = await asyncio.wait_for(
+                    self.order_queue.get(), timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning("No orders in 30s — OrderProducer may be down")
+                continue
             payment = self._make_payment(order_id, method, amount)
             self.produce(
                 config.TOPIC_PAYMENTS,
