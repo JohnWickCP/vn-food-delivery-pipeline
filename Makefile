@@ -36,7 +36,7 @@ kafka-topics:
 	docker exec kafka kafka-topics --list --bootstrap-server localhost:29092
 
 kafka-lag:
-	docker exec kafka kafka-consumer-groups.sh \
+	docker exec kafka kafka-consumer-groups \
 		--bootstrap-server localhost:29092 \
 		--describe --all-groups
 
