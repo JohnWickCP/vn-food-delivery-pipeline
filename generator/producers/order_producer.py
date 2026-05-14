@@ -62,7 +62,7 @@ class OrderProducer(BaseProducer):
         city = random.choice(["hanoi", "hcmc", "danang"])
         district = random.choice(DISTRICTS[city])
 
-        chosen_items = random.choices(FOOD_MENU, k=random.randint(1, 4))
+        chosen_items = random.sample(FOOD_MENU, k=random.randint(1, 4))
         items = [
             OrderItem(
                 item_id=str(uuid4()),
@@ -80,7 +80,7 @@ class OrderProducer(BaseProducer):
         return Order(
             customer_id=uuid4(),
             restaurant_id=random.choice(RESTAURANT_POOL),
-            rider_id=uuid4(),
+            rider_id=random.choice(config.RIDER_POOL),
             city=city,
             district=district,
             status="placed",

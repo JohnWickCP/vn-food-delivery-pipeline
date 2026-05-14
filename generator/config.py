@@ -1,4 +1,5 @@
 import os
+from uuid import uuid4
 
 from dotenv import load_dotenv
 
@@ -19,6 +20,10 @@ PEAK_HOURS: list[tuple[int, int]] = [(11, 13), (18, 20)]
 
 NUM_RIDERS = int(os.getenv("NUM_RIDERS", "200"))
 RIDER_GPS_INTERVAL_SEC = float(os.getenv("RIDER_GPS_INTERVAL_SEC", "30"))
+
+# Shared rider pool — same UUIDs used by both OrderProducer and RiderProducer
+# so that raw_orders.rider_id can join raw_rider_events.rider_id in dbt
+RIDER_POOL = [uuid4() for _ in range(NUM_RIDERS)]
 
 KAFKA_PRODUCER_CONFIG: dict = {
     "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,

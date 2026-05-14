@@ -5,7 +5,7 @@ import logging
 import random
 from datetime import datetime, timezone
 from typing import Optional
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import config
 from producers.base_producer import BaseProducer
@@ -82,8 +82,8 @@ class RiderProducer(BaseProducer):
         cities = list(_CITY_WEIGHTS.keys())
         weights = list(_CITY_WEIGHTS.values())
         return [
-            _Rider(uuid4(), random.choices(cities, weights=weights)[0])
-            for _ in range(config.NUM_RIDERS)
+            _Rider(rider_id, random.choices(cities, weights=weights)[0])
+            for rider_id in config.RIDER_POOL
         ]
 
     async def run(self) -> None:
