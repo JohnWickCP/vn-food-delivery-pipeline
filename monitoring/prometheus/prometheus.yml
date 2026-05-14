@@ -24,12 +24,9 @@ scrape_configs:
       - targets: ["localhost:9090"]
 
   - job_name: "spark"
-    metrics_path: /metrics/prometheus/
+    metrics_path: /metrics/executors/prometheus/
     static_configs:
       - targets:
-          - "spark-master:8080"
-          - "spark-worker-1:8081"
-          - "spark-worker-2:8081"
           - "spark-streaming-orders:4040"
           - "spark-streaming-payments:4040"
           - "spark-streaming-rider-events:4040"

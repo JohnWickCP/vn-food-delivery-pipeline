@@ -259,6 +259,8 @@ services:
       - "2"
       - --executor-memory
       - "1G"
+      - --conf
+      - spark.ui.prometheus.enabled=true
       - /opt/spark/jobs/stream_orders.py
 
   spark-streaming-payments:
@@ -297,6 +299,8 @@ services:
       - "2"
       - --executor-memory
       - "1G"
+      - --conf
+      - spark.ui.prometheus.enabled=true
       - /opt/spark/jobs/stream_payments.py
 
   spark-streaming-rider-events:
@@ -335,6 +339,8 @@ services:
       - "2"
       - --executor-memory
       - "1G"
+      - --conf
+      - spark.ui.prometheus.enabled=true
       - /opt/spark/jobs/stream_rider_events.py
 
   # ─────────────────────────────────────────────
