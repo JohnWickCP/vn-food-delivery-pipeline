@@ -180,7 +180,7 @@ services:
       - --memory
       - ${SPARK_WORKER_MEMORY:-4G}
       - --cores
-      - "${SPARK_WORKER_CORES:-2}"
+      - "${SPARK_WORKER_CORES:-4}"
       - spark://spark-master:7077
     ports:
       - "8082:8081"   # Worker UI: http://localhost:8082
@@ -204,7 +204,7 @@ services:
       - --memory
       - ${SPARK_WORKER_MEMORY:-4G}
       - --cores
-      - "${SPARK_WORKER_CORES:-2}"
+      - "${SPARK_WORKER_CORES:-4}"
       - spark://spark-master:7077
     ports:
       - "8083:8081"   # Worker UI: http://localhost:8083
@@ -247,6 +247,10 @@ services:
       - spark://spark-master:7077
       - --deploy-mode
       - client
+      - --total-executor-cores
+      - "2"
+      - --executor-memory
+      - "1G"
       - /opt/spark/jobs/stream_orders.py
 
   spark-streaming-payments:
@@ -280,6 +284,10 @@ services:
       - spark://spark-master:7077
       - --deploy-mode
       - client
+      - --total-executor-cores
+      - "2"
+      - --executor-memory
+      - "1G"
       - /opt/spark/jobs/stream_payments.py
 
   spark-streaming-rider-events:
@@ -313,6 +321,10 @@ services:
       - spark://spark-master:7077
       - --deploy-mode
       - client
+      - --total-executor-cores
+      - "2"
+      - --executor-memory
+      - "1G"
       - /opt/spark/jobs/stream_rider_events.py
 
   # ─────────────────────────────────────────────

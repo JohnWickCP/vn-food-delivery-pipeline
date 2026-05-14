@@ -5,7 +5,7 @@ import logging
 import random
 from datetime import datetime, timezone
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import config
 from producers.base_producer import BaseProducer
