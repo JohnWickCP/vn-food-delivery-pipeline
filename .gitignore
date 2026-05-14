@@ -17,6 +17,7 @@ dbt/target/
 dbt/dbt_packages/
 dbt/logs/
 dbt/profiles.yml
+dbt/.user.yml
 
 # Airflow
 airflow/logs/
@@ -44,3 +45,4 @@ PROJECT1_MASTER_PLAN_v2.md
 CLAUDE.md
 docs/architecture.png
 docs/data_model.png
+docs/STUDY_GUIDE.md

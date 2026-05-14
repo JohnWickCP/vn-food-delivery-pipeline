@@ -81,7 +81,42 @@ Nếu thiếu bất kỳ 1 trong 3 → data không flow. Đây là bẫy hay g�
 | Checkpoint không persist qua restart | reprocess toàn bộ data từ đầu | Mount volume: `spark-checkpoints:/tmp/checkpoints` |
 | Spark connect MinIO bằng localhost | `Connection refused` | Endpoint phải là `http://minio:9000` (Docker service name) |
 | Items array không map được sang Parquet schema | `StructType` mismatch | Define `ArrayType(StructType([...]))` đúng trong schema registry |
-| trigger 500ms nhưng latency cao | Spark batch slow | Kiểm tra số executors, tăng memory per worker, reduce số partitions nếu data nhỏ |
+| trigger 500ms nhưng latency **thực tế 8–18s** | S3A overhead per micro-batch — xem note chi tiết bên dưới | Chấp nhận cho cold path; xem Production Fix options bên dưới |
+
+#### Deep-dive: Spark Streaming 8–18s Latency (S3A Small File Problem)
+
+**Symptom:** `WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 500 milliseconds, but spent 8000–18000 milliseconds`
+
+**Root cause (3 layers):**
+
+1. **`trigger(processingTime="500ms")` ≠ latency.** Trigger interval chỉ là *khoảng thời gian Spark cố gắng schedule một batch mới*. Nếu batch trước chưa xong, Spark đợi, không tạo batch mới. Wall-clock latency = thời gian thực tế xử lý 1 batch, không phải trigger interval.
+
+2. **S3A small-file write overhead.** Ở throughput thấp (dev), mỗi 500ms batch chỉ có vài chục KB data → 1 Parquet file ~6–7 KB. Mỗi lần write S3A thực hiện:
+   - HTTP PUT negotiation
+   - Multipart upload setup (kể cả file nhỏ nếu `fs.s3a.multipart.threshold` thấp)
+   - Commit protocol (rename + metadata update trên MinIO)
+   - Tổng cộng: ~3–8s per file write, bất kể file lớn hay nhỏ
+   
+3. **3 Spark drivers cùng write S3A đồng thời** vào cùng 1 MinIO instance trên cùng 1 Docker host → MinIO CPU + I/O contention → mỗi write chậm hơn thêm 2–3x.
+
+**Tại sao không fix ngay:**  
+Đây không phải bug — đây là limitation của cold path. MinIO/Spark là *archival layer*, không phải real-time layer. Dashboard Grafana đọc từ ClickHouse Kafka Engine (latency vài giây), không phải từ MinIO. 8–18s là hoàn toàn chấp nhận được cho cold storage.
+
+**Production fixes (khi cần thực sự):**
+
+| Fix | Cách làm | Impact |
+|-----|----------|--------|
+| Tăng trigger interval lên 30s–60s | `trigger(processingTime="30 seconds")` | File lớn hơn (~500KB–2MB), S3A overhead amortized. Phù hợp cold path. |
+| Bypass multipart cho file nhỏ | `spark.hadoop.fs.s3a.multipart.threshold=128M` | File < 128MB dùng single PUT, bỏ qua multipart negotiation overhead |
+| Tăng S3A connection pool | `fs.s3a.connection.maximum=200` + `fs.s3a.fast.upload=true` | Giảm connection setup time khi 3 jobs viết đồng thời |
+| Fast upload buffer | `fs.s3a.fast.upload.buffer=bytebuffer` + `fs.s3a.fast.upload.active.blocks=4` | Spark buffer trong RAM trước khi flush, giảm số HTTP round-trips |
+| Tách MinIO ra host riêng | MinIO trên separate VM/node | Loại bỏ CPU/network contention với Spark trên cùng host |
+| Dùng Delta Lake thay Parquet raw | `format("delta")` + auto-compaction | Delta Lake compact small files tự động; checkpoint + dedup tốt hơn |
+
+**CV/Interview note:**  
+> "500ms is the target trigger interval — how often Spark tries to start a new micro-batch. On single-machine dev, S3A write overhead per micro-batch is 8–18s due to small file I/O. This is a cold-path archival limitation, not the real-time latency. The actual real-time path (Kafka Engine → ClickHouse) has sub-10s end-to-end latency. On a production cluster with dedicated object storage and S3A tuning, the cold path would easily hit sub-second trigger intervals."
+
+---
 
 ### Phase 4: ClickHouse + Kafka Engine
 
