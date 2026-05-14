@@ -12,3 +12,5 @@ food_delivery:
       verify: false
       connect_timeout: 10
       send_receive_timeout: 300
+      custom_settings:
+        allow_suspicious_low_cardinality_types: 1

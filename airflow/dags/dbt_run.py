@@ -8,7 +8,8 @@ from airflow.operators.bash import BashOperator
 DBT_DIR = "/opt/airflow/dbt"
 DBT_PROFILES_DIR = "/opt/airflow/dbt"
 
-_DBT_CMD = f"dbt --no-write-json run --project-dir {DBT_DIR} --profiles-dir {DBT_PROFILES_DIR}"
+_DBT_DEPS = f"dbt deps --project-dir {DBT_DIR} --profiles-dir {DBT_PROFILES_DIR}"
+_DBT_CMD  = f"dbt --no-write-json run  --project-dir {DBT_DIR} --profiles-dir {DBT_PROFILES_DIR}"
 _DBT_TEST = f"dbt --no-write-json test --project-dir {DBT_DIR} --profiles-dir {DBT_PROFILES_DIR}"
 
 default_args = {
@@ -27,6 +28,11 @@ with DAG(
     tags=["dbt", "transformation"],
 ) as dag:
 
+    dbt_deps = BashOperator(
+        task_id="dbt_deps",
+        bash_command=_DBT_DEPS,
+    )
+
     dbt_run = BashOperator(
         task_id="dbt_run",
         bash_command=_DBT_CMD,
@@ -37,4 +43,4 @@ with DAG(
         bash_command=_DBT_TEST,
     )
 
-    dbt_run >> dbt_test
+    dbt_deps >> dbt_run >> dbt_test

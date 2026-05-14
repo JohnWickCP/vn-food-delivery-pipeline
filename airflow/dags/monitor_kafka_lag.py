@@ -82,8 +82,8 @@ def _get_consumer_lag(group_ids: list[str], high_watermarks: dict[str, int]) -> 
     if not group_ids:
         return {t: -1 for t in _TOPICS}  # -1 = unknown (no active group found)
 
-    from confluent_kafka.admin import AdminClient, ConsumerGroupTopicPartitions
-    from confluent_kafka import TopicPartition
+    from confluent_kafka.admin import AdminClient
+    from confluent_kafka import TopicPartition, ConsumerGroupTopicPartitions
 
     admin = AdminClient({"bootstrap.servers": _KAFKA_SERVERS})
 
@@ -92,20 +92,21 @@ def _get_consumer_lag(group_ids: list[str], high_watermarks: dict[str, int]) -> 
     requests = [ConsumerGroupTopicPartitions(gid, tps) for gid in group_ids]
 
     lag_by_topic: dict[str, int] = {t: 0 for t in _TOPICS}
-    try:
-        offsets_result = admin.list_consumer_group_offsets(requests, request_timeout=15)
-        for _gid, future in offsets_result.items():
-            try:
-                cgtp = future.result()
-                for tp in cgtp.topic_partitions:
-                    if tp.error or tp.offset < 0:
-                        continue
-                    hw = high_watermarks.get(f"{tp.topic}:{tp.partition}", 0)
-                    lag_by_topic[tp.topic] = lag_by_topic.get(tp.topic, 0) + max(0, hw - tp.offset)
-            except Exception:
-                pass
-    except Exception as exc:
-        logger.warning("Could not fetch consumer group offsets: %s", exc)
+    for req in requests:
+        try:
+            offsets_result = admin.list_consumer_group_offsets([req], request_timeout=15)
+            for _gid, future in offsets_result.items():
+                try:
+                    cgtp = future.result()
+                    for tp in cgtp.topic_partitions:
+                        if tp.error or tp.offset < 0:
+                            continue
+                        hw = high_watermarks.get(f"{tp.topic}:{tp.partition}", 0)
+                        lag_by_topic[tp.topic] = lag_by_topic.get(tp.topic, 0) + max(0, hw - tp.offset)
+                except Exception:
+                    pass
+        except Exception as exc:
+            logger.warning("Could not fetch offsets for group %s: %s", req.group_id, exc)
 
     return lag_by_topic
 

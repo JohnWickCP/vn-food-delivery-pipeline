@@ -116,6 +116,23 @@ All 7 targets UP:
 
 ---
 
+## 8. Airflow DAG Success Rate
+
+> `monitor_kafka_lag` ran ~43 times over the testing period. Initial 27 failures were caused by a wrong module path in the confluent-kafka import (`ConsumerGroupTopicPartitions` was imported from `confluent_kafka.admin` instead of `confluent_kafka`). Fixed in post-Phase-6 patch.
+
+After fix — task runs in ~0.3s, returns:
+```
+[raw.orders]       throughput=+416 msgs | consumer_lag=2   | SUCCESS
+[raw.payments]     throughput=+416 msgs | consumer_lag=67  | SUCCESS
+[raw.rider_events] throughput=+200 msgs | consumer_lag=0   | SUCCESS
+```
+
+**Lag=67 on raw.payments is expected** — payments are emitted 10–180s after the order, so the ClickHouse consumer is always slightly behind orders. This is data-model lag, not consumer backlog.
+
+`dbt_run` DAG: `dbt_deps → dbt_run → dbt_test`, 3 tasks. Runs hourly at HH:05. Not triggered during measurement window (paused by default). Full cycle tested manually: 10/10 models + 55/55 tests pass.
+
+---
+
 ## Summary for CV
 
 | Metric | CV Claim | Actual |
@@ -123,6 +140,6 @@ All 7 targets UP:
 | Kafka throughput | 5,000+ orders/min (peak) | ~840/min off-peak, ~1,740/min avg, 5k peak theoretical |
 | ClickHouse latency | <100ms on 5M rows | 3–19ms on 261k rows (29–103ms on 5M in prior perf test) |
 | dbt test coverage | 100% (30+ tests) | **55/55 tests, 100% pass** |
-| Pipeline uptime | ≥99% | Running continuously, 0 failures during measurement |
+| Airflow DAG health | ≥99% after fix | `monitor_kafka_lag`: import bug fixed; task runs clean 0.3s. `dbt_run`: 10/10 models, 55/55 tests via manual test |
 | Prometheus targets | 7/7 | **7/7 UP** |
 | Cold storage | ~20GB/30d | On track — 4.2GB in 2.5h → ~40GB/month |
