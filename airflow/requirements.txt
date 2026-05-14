@@ -1,3 +1,5 @@
 apache-airflow-providers-amazon>=8.0.0
 clickhouse-driver>=0.2.7
 confluent-kafka>=2.3.0
+dbt-core>=1.7.0,<2.0.0
+dbt-clickhouse>=1.7.0

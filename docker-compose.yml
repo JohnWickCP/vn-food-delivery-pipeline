@@ -387,9 +387,14 @@ services:
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-supersecret}
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      DBT_CLICKHOUSE_HOST: clickhouse
+      DBT_CLICKHOUSE_PORT: "8123"
+      DBT_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      DBT_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
+      - ./dbt:/opt/airflow/dbt:ro
       - airflow-logs:/opt/airflow/logs
     networks:
       - food-delivery-net
@@ -418,9 +423,14 @@ services:
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-supersecret}
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      DBT_CLICKHOUSE_HOST: clickhouse
+      DBT_CLICKHOUSE_PORT: "8123"
+      DBT_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      DBT_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
+      - ./dbt:/opt/airflow/dbt:ro
       - airflow-logs:/opt/airflow/logs
     networks:
       - food-delivery-net
