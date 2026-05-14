@@ -20,7 +20,7 @@ default_args = {
 with DAG(
     dag_id="dbt_run",
     description="Run dbt models + tests after ClickHouse is loaded",
-    schedule_interval="5 * * * *",   # 5 minutes past every hour, after load_minio_to_clickhouse
+    schedule_interval="5 * * * *",   # HH:05 — after Kafka Engine real-time load settles
     start_date=datetime(2024, 1, 1),
     catchup=False,
     default_args=default_args,

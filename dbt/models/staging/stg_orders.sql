@@ -21,5 +21,5 @@ SELECT
     toHour(placed_at)                                   AS placed_hour,
     event_timestamp,
     _ingested_at
-FROM {{ source('food_delivery', 'raw_orders') }}
+FROM {{ source('food_delivery', 'raw_orders') }} FINAL
 WHERE total_vnd > 0

@@ -14,4 +14,4 @@ SELECT
     toDate(event_timestamp)         AS event_date,
     toHour(event_timestamp)         AS event_hour,
     _ingested_at
-FROM {{ source('food_delivery', 'raw_rider_events') }}
+FROM {{ source('food_delivery', 'raw_rider_events') }} FINAL

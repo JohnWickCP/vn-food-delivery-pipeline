@@ -9,7 +9,7 @@ WITH exploded AS (
         city,
         placed_at,
         arrayJoin(JSONExtractArrayRaw(items)) AS item_json
-    FROM {{ source('food_delivery', 'raw_orders') }}
+    FROM {{ source('food_delivery', 'raw_orders') }} FINAL
     WHERE items != '[]' AND items != ''
 )
 SELECT

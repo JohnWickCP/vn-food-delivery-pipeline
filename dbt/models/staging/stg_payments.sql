@@ -11,4 +11,4 @@ SELECT
     toTimeZone(processed_at, 'Asia/Ho_Chi_Minh')               AS processed_at_local,
     event_timestamp,
     _ingested_at
-FROM {{ source('food_delivery', 'raw_payments') }}
+FROM {{ source('food_delivery', 'raw_payments') }} FINAL

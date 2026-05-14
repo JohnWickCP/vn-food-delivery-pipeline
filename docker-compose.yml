@@ -1,6 +1,7 @@
 networks:
   food-delivery-net:
     driver: bridge
+    name: food-delivery-net
 
 volumes:
   zookeeper-data:
@@ -154,6 +155,8 @@ services:
     ports:
       - "8081:8080"   # Spark Master UI: http://localhost:8081
       - "7077:7077"   # Spark submit port
+    volumes:
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     networks:
       - food-delivery-net
     healthcheck:
@@ -184,6 +187,8 @@ services:
       - spark://spark-master:7077
     ports:
       - "8082:8081"   # Worker UI: http://localhost:8082
+    volumes:
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     networks:
       - food-delivery-net
 
@@ -208,6 +213,8 @@ services:
       - spark://spark-master:7077
     ports:
       - "8083:8081"   # Worker UI: http://localhost:8083
+    volumes:
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     networks:
       - food-delivery-net
 
@@ -236,6 +243,7 @@ services:
       - food-delivery-net
     volumes:
       - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MINIO_ENDPOINT: http://minio:9000
@@ -273,6 +281,7 @@ services:
       - food-delivery-net
     volumes:
       - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MINIO_ENDPOINT: http://minio:9000
@@ -310,6 +319,7 @@ services:
       - food-delivery-net
     volumes:
       - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MINIO_ENDPOINT: http://minio:9000
