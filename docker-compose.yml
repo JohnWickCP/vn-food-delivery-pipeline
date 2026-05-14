@@ -147,7 +147,8 @@ services:
   # SPARK MASTER
   # ─────────────────────────────────────────────
   spark-master:
-    image: apache/spark:3.5.0
+    build:
+      context: ./spark
     container_name: spark-master
     restart: unless-stopped
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
@@ -167,7 +168,8 @@ services:
   # SPARK WORKER 1
   # ─────────────────────────────────────────────
   spark-worker-1:
-    image: apache/spark:3.5.0
+    build:
+      context: ./spark
     container_name: spark-worker-1
     restart: unless-stopped
     depends_on:
@@ -183,8 +185,6 @@ services:
       - spark://spark-master:7077
     ports:
       - "8082:8081"   # Worker UI: http://localhost:8082
-    volumes:
-      - spark-checkpoints:/tmp/checkpoints
     networks:
       - food-delivery-net
 
@@ -192,7 +192,8 @@ services:
   # SPARK WORKER 2
   # ─────────────────────────────────────────────
   spark-worker-2:
-    image: apache/spark:3.5.0
+    build:
+      context: ./spark
     container_name: spark-worker-2
     restart: unless-stopped
     depends_on:
@@ -208,10 +209,46 @@ services:
       - spark://spark-master:7077
     ports:
       - "8083:8081"   # Worker UI: http://localhost:8083
-    volumes:
-      - spark-checkpoints:/tmp/checkpoints
     networks:
       - food-delivery-net
+
+  # ─────────────────────────────────────────────
+  # SPARK STREAMING — long-running driver (client mode)
+  # Depends on kafka + minio being healthy; jobs mounted from ./spark/jobs
+  # ─────────────────────────────────────────────
+  spark-streaming:
+    build:
+      context: ./spark
+    container_name: spark-streaming
+    restart: on-failure
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - food-delivery-net
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - spark-checkpoints:/tmp/checkpoints
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - --deploy-mode
+      - client
+      - /opt/spark/jobs/stream_to_minio.py
 
   # ─────────────────────────────────────────────
   # AIRFLOW POSTGRES — metadata DB only (not DWH)
