@@ -1,5 +1,61 @@
 # Vietnam Food Delivery Real-Time Analytics Pipeline
 
+## Dự án này làm gì?
+
+Hãy tưởng tượng bạn đang điều hành một ứng dụng đặt đồ ăn như GrabFood hay ShopeeFood tại Việt Nam. Mỗi phút có hàng nghìn đơn hàng được đặt ở Hà Nội, TP.HCM, Đà Nẵng. Câu hỏi đặt ra là:
+
+- Giờ này đang có bao nhiêu đơn/phút? Thành phố nào đang bận nhất?
+- Shipper nào đang di chuyển chậm bất thường? Pin sắp hết chưa?
+- Doanh thu giờ ăn trưa hôm nay so với hôm qua thế nào?
+- Nếu hệ thống thanh toán chậm, bao nhiêu đơn đang bị tồn?
+
+**Dự án này là hệ thống xử lý và trả lời những câu hỏi đó — trong vài giây, liên tục 24/7.**
+
+Thay vì dùng dữ liệu thật (cần làm việc với doanh nghiệp thực tế), dự án tự sinh ra ~1,500 đơn hàng/phút giả lập hoàn toàn giống hành vi người dùng thật: cao điểm lúc 11–13h và 18–20h, 200 shipper chạy GPS mỗi 30 giây, thanh toán xử lý sau 10–180 giây.
+
+---
+
+## Hệ thống hoạt động như thế nào?
+
+```
+Dữ liệu được sinh ra → Truyền qua hàng đợi → Lưu trữ → Phân tích → Hiển thị
+```
+
+Nói cụ thể hơn:
+
+**1. Sinh dữ liệu** — Python tạo ra đơn hàng, thanh toán, vị trí GPS của shipper giống thật. Đơn hàng có món ăn, giá tiền, quận huyện, nền tảng (iOS/Android/web). Thanh toán qua MoMo, VNPay, ZaloPay, tiền mặt.
+
+**2. Hàng đợi tin nhắn (Apache Kafka)** — Toàn bộ dữ liệu đi qua Kafka, giống như một băng chuyền vận chuyển hàng hóa tốc độ cao. Kafka đảm bảo không mất dữ liệu dù phần sau của hệ thống tạm thời chậm hay gặp sự cố.
+
+**3. Hai con đường lưu trữ song song:**
+- **Con đường nóng:** Dữ liệu vào ClickHouse trong vài giây — dùng để hiển thị dashboard real-time trên Grafana
+- **Con đường lạnh:** Spark xử lý và lưu file Parquet vào MinIO (giống S3) — dùng để lưu trữ lâu dài và phân tích lịch sử
+
+**4. Biến đổi dữ liệu (dbt)** — Mỗi giờ, dbt chạy các câu SQL để tính toán: doanh thu theo giờ, hiệu suất từng shipper, tỷ lệ hủy đơn theo nhà hàng, giờ cao điểm. Kết quả lưu thành các bảng sẵn sàng để query.
+
+**5. Điều phối (Airflow)** — Giống người quản lý ca, đảm bảo các bước chạy đúng giờ, tự động báo lỗi nếu có vấn đề.
+
+**6. Quan sát hệ thống (Prometheus + Grafana)** — Dashboard hiển thị số đơn/phút, lag của hàng đợi, thời gian xử lý của Spark, tình trạng tất cả 20 service đang chạy.
+
+---
+
+## Kết quả đo được
+
+| Chỉ số | Giá trị |
+|--------|---------|
+| Tốc độ xử lý | ~1,500 đơn/phút liên tục (có thể mở rộng lên 5,000+/phút) |
+| Độ trễ vào ClickHouse | vài giây kể từ khi đặt đơn |
+| Tốc độ query phân tích | 3–19ms trên 260,000+ bản ghi |
+| Kiểm thử dữ liệu | 55/55 test pass, 100% |
+| Hệ thống giám sát | 7/7 service được theo dõi |
+| Lưu trữ lạnh | 4.2 GB sau 2.5 giờ chạy |
+
+---
+
+*Phần kỹ thuật chi tiết bên dưới — dành cho kỹ sư muốn hiểu sâu stack và thiết kế.*
+
+---
+
 A production-style data engineering portfolio project simulating a food delivery platform (GrabFood/ShopeeFood scale) in Vietnam — demonstrating real-time streaming, dual-path ingestion, batch orchestration, and analytical modeling end-to-end.
 
 ## Architecture
