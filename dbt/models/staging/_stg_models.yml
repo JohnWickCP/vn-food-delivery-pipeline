@@ -1,0 +1,122 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: "Cleaned orders — rename, cast, add derived columns. No joins."
+    columns:
+      - name: order_id
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        tests:
+          - not_null
+      - name: restaurant_id
+        tests:
+          - not_null
+      - name: rider_id
+        tests:
+          - not_null
+      - name: city
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['hanoi', 'hcmc', 'danang']
+      - name: status
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['placed', 'confirmed', 'preparing', 'picked_up', 'delivered', 'cancelled']
+      - name: payment_method
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['cash', 'momo', 'vnpay', 'zalopay', 'bank_transfer']
+      - name: platform
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['android', 'ios', 'web']
+      - name: meal_period
+        tests:
+          - accepted_values:
+              values: ['lunch', 'dinner', 'off_peak']
+      - name: total_vnd
+        tests:
+          - not_null
+      - name: placed_date
+        tests:
+          - not_null
+
+  - name: stg_payments
+    description: "Cleaned payments — one row per order."
+    columns:
+      - name: payment_id
+        tests:
+          - unique
+          - not_null
+      - name: order_id
+        tests:
+          - not_null
+      - name: amount_vnd
+        tests:
+          - not_null
+      - name: payment_method
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['cash', 'momo', 'vnpay', 'zalopay', 'bank_transfer']
+      - name: payment_status
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['success', 'failed', 'refunded']
+      - name: processed_at_local
+        tests:
+          - not_null
+
+  - name: stg_riders
+    description: "Cleaned GPS pings — one row per rider ping."
+    columns:
+      - name: event_id
+        tests:
+          - unique
+          - not_null
+      - name: rider_id
+        tests:
+          - not_null
+      - name: city
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['hanoi', 'hcmc', 'danang']
+      - name: latitude
+        tests:
+          - not_null
+      - name: longitude
+        tests:
+          - not_null
+      - name: rider_status
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['available', 'on_delivery', 'returning']
+
+  - name: stg_order_items
+    description: "Exploded order items — one row per item per order."
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+      - name: item_id
+        tests:
+          - not_null
+      - name: item_name
+        tests:
+          - not_null
+      - name: quantity
+        tests:
+          - not_null
+      - name: line_total_vnd
+        tests:
+          - not_null
