@@ -3,13 +3,13 @@
 # Run from repo root: make metrics
 # Requires: pipeline stack running (make up), curl, docker, python3
 
-set -euo pipefail
+set -uo pipefail
 
 CH="http://${CLICKHOUSE_HOST:-localhost}:${CLICKHOUSE_PORT:-8123}"
 
 ch()      { curl -sf --data "$1" "${CH}/"; }
 ch_null() { curl -sf --data "$1 FORMAT Null" "${CH}/"; }
-ms_now()  { python3 -c 'import time; print(int(time.time()*1000))'; }
+ms_now()  { date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || python -c 'import time; print(int(time.time()*1000))'; }
 
 sep() { echo ""; echo "── $1 ────────────────────────────────────────────────────"; }
 
@@ -24,7 +24,7 @@ sep "1. DATA VOLUME  [target: 7M+ events/day, ~20GB/30d]"
 ch "
 SELECT
     table,
-    formatReadableQuantity(sum(rows))                        AS rows,
+    formatReadableQuantity(sum(rows))                        AS row_count,
     formatReadableSize(sum(data_compressed_bytes))           AS compressed,
     formatReadableSize(sum(data_uncompressed_bytes))         AS uncompressed,
     round(sum(data_uncompressed_bytes) / sum(data_compressed_bytes), 1) AS compression_ratio
@@ -72,22 +72,22 @@ done
 # ── 4. dbt Layer Row Counts ─────────────────────────────────────────────────
 sep "4. DBT MART TABLES"
 ch "
-SELECT database, table, formatReadableQuantity(count()) AS rows
-FROM system.tables
-WHERE database LIKE 'food_delivery_dbt%'
-  AND engine NOT IN ('MaterializedView', 'View')
+SELECT database, table, formatReadableQuantity(sum(rows)) AS row_count
+FROM system.parts
+WHERE database LIKE 'food_delivery_dbt%' AND active
+GROUP BY database, table
 ORDER BY database, table
 FORMAT PrettyNoEscapes
-" 2>/dev/null || echo "  (dbt models not yet materialized — run dbt first)"
+" || echo "  (dbt models not yet materialized — run dbt first)"
 
 # ── 5. dbt Tests ────────────────────────────────────────────────────────────
 sep "5. DBT TEST RESULTS  [target: 100% pass, 30+ tests]"
-docker exec airflow-scheduler dbt test \
+MSYS_NO_PATHCONV=1 docker exec airflow-scheduler dbt test \
     --project-dir /opt/airflow/dbt \
     --profiles-dir /opt/airflow/dbt \
     --no-write-json 2>&1 \
-    | grep -E "^[0-9]+ of [0-9]+|Finished running|PASS|FAIL|ERROR" \
-    | tail -4 || echo "  (run 'make up' first to start airflow-scheduler)"
+    | grep -E "Done\.|Finished running" \
+    | tail -3 || echo "  (run 'make up' first to start airflow-scheduler)"
 
 # ── 6. MinIO Storage ─────────────────────────────────────────────────────────
 sep "6. MINIO STORAGE (cold path)"
