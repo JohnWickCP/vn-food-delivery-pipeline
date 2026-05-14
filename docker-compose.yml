@@ -7,7 +7,6 @@ volumes:
   zookeeper-logs:
   kafka-data:
   minio-data:
-  spark-checkpoints:
   airflow-postgres-data:
   airflow-logs:
   clickhouse-data:
@@ -213,13 +212,14 @@ services:
       - food-delivery-net
 
   # ─────────────────────────────────────────────
-  # SPARK STREAMING — long-running driver (client mode)
-  # Depends on kafka + minio being healthy; jobs mounted from ./spark/jobs
+  # SPARK STREAMING — 3 independent drivers (client mode)
+  # Each reads one Kafka topic, writes Parquet to MinIO.
+  # Checkpoints stored in s3a://food-delivery-lake/checkpoints/<topic>/
   # ─────────────────────────────────────────────
-  spark-streaming:
+  spark-streaming-orders:
     build:
       context: ./spark
-    container_name: spark-streaming
+    container_name: spark-streaming-orders
     restart: on-failure
     depends_on:
       spark-master:
@@ -236,7 +236,6 @@ services:
       - food-delivery-net
     volumes:
       - ./spark/jobs:/opt/spark/jobs:ro
-      - spark-checkpoints:/tmp/checkpoints
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MINIO_ENDPOINT: http://minio:9000
@@ -248,7 +247,73 @@ services:
       - spark://spark-master:7077
       - --deploy-mode
       - client
-      - /opt/spark/jobs/stream_to_minio.py
+      - /opt/spark/jobs/stream_orders.py
+
+  spark-streaming-payments:
+    build:
+      context: ./spark
+    container_name: spark-streaming-payments
+    restart: on-failure
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - food-delivery-net
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - --deploy-mode
+      - client
+      - /opt/spark/jobs/stream_payments.py
+
+  spark-streaming-rider-events:
+    build:
+      context: ./spark
+    container_name: spark-streaming-rider-events
+    restart: on-failure
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - food-delivery-net
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - --deploy-mode
+      - client
+      - /opt/spark/jobs/stream_rider_events.py
 
   # ─────────────────────────────────────────────
   # AIRFLOW POSTGRES — metadata DB only (not DWH)
