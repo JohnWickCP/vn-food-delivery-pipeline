@@ -1,0 +1,180 @@
+{
+  "id": null,
+  "uid": "food-delivery-infra",
+  "title": "Food Delivery — Infrastructure",
+  "tags": ["food-delivery", "infra"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Kafka Messages/sec by Topic",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+          "expr": "sum by (topic) (rate(kafka_topic_partition_current_offset[1m]))",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Kafka Consumer Lag by Group",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+          "expr": "sum by (consumergroup) (kafka_consumergroup_lag)",
+          "legendFormat": "{{consumergroup}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5000 },
+              { "color": "red", "value": 10000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Host CPU Usage (%)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+          "expr": "100 - (avg(irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "CPU %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Host Memory Usage (%)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "legendFormat": "Memory %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 80 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Spark — Active Streaming Jobs",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+          "expr": "metrics_streaming_driver_streaming_eventTrigger_numActiveBatches_Value",
+          "legendFormat": "active batches"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+          "expr": "metrics_streaming_driver_streaming_eventTrigger_processingRate_Value",
+          "legendFormat": "processing rate (rows/s)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "ClickHouse — Insert Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+          "expr": "rate(ClickHouseProfileEvents_InsertedRows[1m])",
+          "legendFormat": "inserted rows/s"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus-food-delivery" },
+          "expr": "rate(ClickHouseProfileEvents_KafkaMessagesRead[1m])",
+          "legendFormat": "kafka messages read/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    }
+  ]
+}

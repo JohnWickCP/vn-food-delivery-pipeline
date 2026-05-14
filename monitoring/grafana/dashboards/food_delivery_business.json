@@ -1,0 +1,179 @@
+{
+  "id": null,
+  "uid": "food-delivery-business",
+  "title": "Food Delivery — Business Metrics",
+  "tags": ["food-delivery", "business"],
+  "timezone": "Asia/Ho_Chi_Minh",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Orders Per Hour by City",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+          "rawSql": "SELECT hour_bucket AS time, sumIf(total_orders, city='hcmc') AS HCMC, sumIf(total_orders, city='hanoi') AS Hanoi, sumIf(total_orders, city='danang') AS Danang FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket) GROUP BY time ORDER BY time",
+          "format": 1,
+          "dateTimeType": "DATETIME64"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Revenue Per Hour by City (k VND)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+          "rawSql": "SELECT hour_bucket AS time, sumIf(total_revenue_k_vnd, city='hcmc') AS HCMC, sumIf(total_revenue_k_vnd, city='hanoi') AS Hanoi, sumIf(total_revenue_k_vnd, city='danang') AS Danang FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket) GROUP BY time ORDER BY time",
+          "format": 1,
+          "dateTimeType": "DATETIME64"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__series.name}", "custom": { "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Total Orders",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+          "rawSql": "SELECT sum(total_orders) AS value FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket)",
+          "format": 0
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": { "steps": [{ "color": "green", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value" }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Total Revenue (k VND)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+          "rawSql": "SELECT sum(total_revenue_k_vnd) AS value FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket)",
+          "format": 0
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": { "steps": [{ "color": "green", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value" }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Cancellation Rate",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+          "rawSql": "SELECT round(sum(cancelled_orders) * 100.0 / sum(total_orders), 1) AS value FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket)",
+          "format": 0
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name" }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Avg Order Value (k VND)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+          "rawSql": "SELECT round(sum(total_revenue_k_vnd) / sum(total_orders), 1) AS value FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket)",
+          "format": 0
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": { "steps": [{ "color": "blue", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name" }
+    },
+    {
+      "id": 7,
+      "type": "piechart",
+      "title": "Payment Methods",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+          "rawSql": "SELECT 'MoMo' AS method, sum(momo_orders) AS orders FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket) UNION ALL SELECT 'VNPay', sum(vnpay_orders) FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket) UNION ALL SELECT 'ZaloPay', sum(zalopay_orders) FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket) UNION ALL SELECT 'Cash', sum(cash_orders) FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket)",
+          "format": 0
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "pieType": "donut", "tooltip": { "mode": "single" }, "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "id": 8,
+      "type": "piechart",
+      "title": "Meal Period Distribution",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+          "rawSql": "SELECT 'Lunch (11-13h)' AS period, sum(lunch_orders) AS orders FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket) UNION ALL SELECT 'Dinner (18-20h)', sum(dinner_orders) FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket) UNION ALL SELECT 'Off-peak', sum(off_peak_orders) FROM food_delivery_dbt_marts.rpt_hourly_revenue WHERE $__timeFilter(hour_bucket)",
+          "format": 0
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "pieType": "pie", "tooltip": { "mode": "single" }, "legend": { "displayMode": "table", "placement": "right" } }
+    }
+  ]
+}
