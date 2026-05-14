@@ -153,6 +153,86 @@ make metrics   # hoặc bash scripts/measure_metrics.sh
 
 ---
 
+### "Why did you choose X?" — Technology Justification
+
+> Đây là nhóm câu hỏi interviewer hay hỏi nhất để kiểm tra xem bạn có thực sự hiểu stack hay chỉ copy tutorial.
+> Trả lời theo format: lý do chọn X, X giải quyết vấn đề gì, và X kém hơn Y ở điểm nào (honest trade-off).
+
+**Kafka**
+
+45. Tại sao dùng Kafka thay vì RabbitMQ? RabbitMQ không có gì mà Kafka có?
+46. Tại sao không dùng Redis Pub/Sub hoặc AWS SQS thay vì Kafka?
+47. Kafka Log Retention 24h — tại sao không 7 ngày hoặc vĩnh viễn? Trade-off là gì?
+48. Tại sao `acks=all` trong producer config thay vì `acks=1` (nhanh hơn)?
+49. `linger.ms=5` và `batch.size=65536` — 2 config này ảnh hưởng gì đến throughput và latency?
+
+**Parquet & MinIO**
+
+50. Tại sao chọn Parquet thay vì CSV hoặc JSON để lưu trên MinIO?
+51. Parquet vs ORC vs Avro — khi nào dùng cái nào? Dự án này chọn Parquet vì lý do gì cụ thể?
+52. Tại sao lưu Parquet partitioned by `year/month/day` thay vì một file flat?
+53. Tại sao dùng MinIO thay vì AWS S3 thật? Điều gì sẽ thay đổi khi migrate lên S3 thật?
+54. MinIO trong dự án này có giá trị gì sau khi đã có ClickHouse Kafka Engine? Tại sao không xóa đi?
+
+**ClickHouse**
+
+55. Tại sao ClickHouse thay vì PostgreSQL cho analytical layer? PostgreSQL không đủ sao?
+56. Tại sao ClickHouse thay vì DuckDB? DuckDB cũng là columnar và nhanh.
+57. Tại sao không dùng BigQuery hay Redshift? Chúng không tốt hơn ClickHouse sao?
+58. Tại sao `ReplacingMergeTree` thay vì plain `MergeTree` cho raw tables? Trade-off là gì?
+59. Tại sao `ORDER BY (city, placed_at, order_id)` trong raw_orders? City là dimension thấp cardinality — điều đó có lợi gì?
+60. Tại sao ClickHouse Kafka Engine thay vì viết custom consumer service (Python) để insert vào ClickHouse?
+
+**PySpark**
+
+61. Tại sao PySpark thay vì Apache Flink? Flink được coi là real-time hơn Spark.
+62. Tại sao PySpark thay vì Kafka Streams hay ksqlDB?
+63. Tại sao không dùng Python + Pandas để xử lý data từ Kafka? Khi nào Pandas là đủ, khi nào cần Spark?
+64. Tại sao Structured Streaming thay vì Spark DStream (old API)? DStream có vấn đề gì?
+65. Client mode vs Cluster mode trong Spark — dự án này dùng gì và tại sao?
+
+**Airflow**
+
+66. Tại sao dùng Airflow thay vì cronjob Linux thuần túy? `crontab -e` không đủ sao?
+67. Tại sao Airflow thay vì Prefect hay Dagster? Chúng "modern" hơn Airflow.
+68. LocalExecutor vs CeleryExecutor — dự án này dùng LocalExecutor, có vấn đề gì ở production?
+69. Tại sao dbt_run DAG chạy lúc HH:05 thay vì HH:00 đúng giờ?
+
+**dbt**
+
+70. Tại sao dùng dbt thay vì viết SQL scripts thủ công và chạy bằng Python/Airflow?
+71. dbt-clickhouse vs dbt-core với connection thủ công — khác nhau điểm nào?
+72. Tại sao staging models là `materialized='view'` trong khi mart models là `materialized='table'`?
+73. Tại sao không dùng `incremental` materialization cho `fct_orders`? Trade-off?
+74. Tại sao cần `dbt test` riêng biệt sau `dbt run`? Không thể kết hợp?
+
+**Python/Generator**
+
+75. Tại sao dùng `asyncio` cho generator thay vì `threading` hoặc `multiprocessing`?
+76. Tại sao Pydantic v2 thay vì Python `dataclasses` hoặc `TypedDict`?
+77. Tại sao dùng `confluent-kafka` (C extension) thay vì `kafka-python` (pure Python)?
+78. `confluent-kafka` là synchronous — tại sao không block event loop khi produce?
+79. Tại sao `random.sample()` thay vì `random.choices()` cho order items?
+
+**Docker & Infrastructure**
+
+80. Tại sao Docker Compose thay vì Kubernetes cho project này?
+81. Tại sao tách `docker-compose.monitoring.yml` riêng thay vì gộp vào file chính?
+82. Tại sao Prometheus 2.45.6 cụ thể? Tại sao không dùng latest?
+83. Tại sao `healthcheck` quan trọng trong Docker Compose? Không có thì sao?
+84. `depends_on: condition: service_completed_successfully` vs `service_healthy` — khác gì nhau?
+
+**General System Design**
+
+85. Tại sao dự án cần cả Kafka lẫn Spark? Không thể dùng Kafka Streams thôi là đủ?
+86. Tại sao dùng UUID làm primary key thay vì auto-increment integer?
+87. Tại sao `DateTime64(3, 'UTC')` cho `event_timestamp` nhưng `DateTime64(3, 'Asia/Ho_Chi_Minh')` cho `placed_at`?
+88. Tại sao Kafka partition count là 3? 1 partition có gì sai, 10 partitions có gì sai?
+89. Consumer group `__airflow_monitor__` trong monitor_kafka_lag.py — tại sao đặt tên với dấu `__`?
+90. Tại sao `kafka_skip_broken_messages = 10` trong Kafka Engine settings? Không skip thì sao?
+
+---
+
 ## Part 3: Vocabulary
 
 ### Kafka

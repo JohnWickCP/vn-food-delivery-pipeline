@@ -111,6 +111,8 @@ make up-mon                   # starts monitoring stack (Prometheus + Grafana)
 make metrics                  # print CV metrics report
 ```
 
+> Full setup guide with troubleshooting → **[SETUP.md](SETUP.md)**
+
 **Service URLs after `make up` + `make up-mon`:**
 
 | Service | URL | Notes |

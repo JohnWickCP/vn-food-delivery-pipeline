@@ -41,5 +41,6 @@ Thumbs.db
 # Project-specific (không commit lên GitHub public)
 PROJECT1_MASTER_PLAN.md
 PROJECT1_MASTER_PLAN_v2.md
+CLAUDE.md
 docs/architecture.png
 docs/data_model.png
