@@ -352,7 +352,7 @@ services:
   # AIRFLOW INIT (one-shot: db migrate + create admin)
   # ─────────────────────────────────────────────
   airflow-init:
-    image: apache/airflow:2.8.0
+    build: ./airflow
     container_name: airflow-init
     depends_on:
       airflow-postgres:
@@ -372,7 +372,7 @@ services:
   # AIRFLOW WEBSERVER
   # ─────────────────────────────────────────────
   airflow-webserver:
-    image: apache/airflow:2.8.0
+    build: ./airflow
     container_name: airflow-webserver
     restart: unless-stopped
     depends_on:
@@ -405,7 +405,7 @@ services:
   # AIRFLOW SCHEDULER
   # ─────────────────────────────────────────────
   airflow-scheduler:
-    image: apache/airflow:2.8.0
+    build: ./airflow
     container_name: airflow-scheduler
     restart: unless-stopped
     depends_on:
