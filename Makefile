@@ -49,4 +49,4 @@ metrics:
 
 test:
 	@echo "=== dbt tests ===" && \
-	docker exec airflow-scheduler dbt test --project-dir /opt/dbt || true
+	docker exec airflow-scheduler dbt test --project-dir /opt/airflow/dbt --profiles-dir /opt/airflow/dbt || true

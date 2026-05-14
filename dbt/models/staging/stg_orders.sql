@@ -19,11 +19,6 @@ SELECT
     toTimeZone(placed_at, 'Asia/Ho_Chi_Minh')           AS placed_at_local,
     toDate(placed_at)                                   AS placed_date,
     toHour(placed_at)                                   AS placed_hour,
-    CASE
-        WHEN toHour(placed_at) BETWEEN 11 AND 13 THEN 'lunch'
-        WHEN toHour(placed_at) BETWEEN 18 AND 20 THEN 'dinner'
-        ELSE 'off_peak'
-    END                                                 AS meal_period,
     event_timestamp,
     _ingested_at
 FROM {{ source('food_delivery', 'raw_orders') }}

@@ -14,7 +14,11 @@ SELECT
     o.total_k_vnd,
     o.payment_method,
     o.platform,
-    o.meal_period,
+    CASE
+        WHEN o.placed_hour BETWEEN 11 AND 13 THEN 'lunch'
+        WHEN o.placed_hour BETWEEN 18 AND 20 THEN 'dinner'
+        ELSE 'off_peak'
+    END                                                             AS meal_period,
     o.placed_at_local,
     o.placed_date,
     o.placed_hour,
