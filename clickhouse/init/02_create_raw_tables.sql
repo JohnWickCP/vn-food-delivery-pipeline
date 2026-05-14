@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS food_delivery.raw_orders (
     city              LowCardinality(String),
     district          String,
     status            LowCardinality(String),
+    items             String,                              -- raw JSON array: [{item_id, name, price_vnd, quantity}]
     subtotal_vnd      UInt32,
     delivery_fee_vnd  UInt32,
     discount_vnd      UInt32,
@@ -35,7 +36,7 @@ CREATE TABLE IF NOT EXISTS food_delivery.raw_payments (
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(processed_at)
-ORDER BY (status, processed_at, payment_id)
+ORDER BY (processed_at, payment_id)
 SETTINGS index_granularity = 8192;
 
 
