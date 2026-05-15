@@ -43,12 +43,12 @@ Nói cụ thể hơn:
 
 | Chỉ số | Giá trị |
 |--------|---------|
-| Tốc độ xử lý | ~1,500 đơn/phút liên tục (có thể mở rộng lên 5,000+/phút) |
-| Độ trễ vào ClickHouse | vài giây kể từ khi đặt đơn |
-| Tốc độ query phân tích | 3–19ms trên 260,000+ bản ghi |
+| Tốc độ xử lý | ~1,000–2,000 đơn/phút (off-peak đến peak, single-node Docker) |
+| Độ trễ vào ClickHouse | vài giây kể từ khi đặt đơn (Kafka Engine) |
+| Tốc độ query phân tích | 3–19ms trên 261,000+ bản ghi |
 | Kiểm thử dữ liệu | 55/55 test pass, 100% |
 | Hệ thống giám sát | 7/7 service được theo dõi |
-| Lưu trữ lạnh | 4.2 GB sau 2.5 giờ chạy |
+| Lưu trữ lạnh (MinIO) | 161 MiB / 16 phút → ~14 GB/ngày ở throughput ổn định |
 
 ---
 
@@ -65,7 +65,7 @@ A production-style data engineering portfolio project simulating a food delivery
 │                        INGESTION LAYER                          │
 │                                                                 │
 │  [Python Generator — asyncio, Pydantic v2]                      │
-│    OrderProducer  (5,000/min peak · 1,200/min base)             │
+│    OrderProducer  (5,000/min peak · ~1,000/min base)            │
 │    PaymentProducer (async queue from OrderProducer)             │
 │    RiderProducer  (200 riders, 30s GPS pings)                   │
 │           │                                                     │
@@ -155,12 +155,13 @@ A production-style data engineering portfolio project simulating a food delivery
 
 | Metric | Target | Actual |
 |--------|--------|--------|
-| Kafka throughput | 5,000+ orders/min (peak) | ~1,500/min sustained on single-node dev; architecture supports 5k+ at scale |
-| ClickHouse query latency | <100ms on 5M rows | 3–19ms on 257k rows |
-| dbt test coverage | 100% (30+ tests) | **55/55 tests pass** |
-| Prometheus targets | 7/7 up | 7/7 up |
-| MinIO cold storage | ~20GB / 30d | 4.2GB after 2h (on track) |
-| Events ingested | 7M+/day theoretical | ~257k orders + ~257k payments + ~40k GPS pings |
+| Kafka throughput | 5,000+ orders/min (peak) | ~1,000–2,000 orders/min on single-node Docker; architecture supports 5,000+/min at scale |
+| ClickHouse query latency | <100ms on 5M rows | **3–19ms on 261k rows**; 29–103ms on 5M (prior perf test) |
+| dbt test coverage | 100% (55 tests) | **55/55 tests pass** |
+| Prometheus targets | 7/7 up | **7/7 up** |
+| MinIO cold storage | ~14GB / day | 161 MiB in 16 min → ~600 MB/h → ~14 GB/day at sustained rate |
+| Events ingested | 5M+/day theoretical | 17,830 orders + 17,818 payments + 6,200 GPS pings in 16 min |
+| dbt models | 10 models, 3 layers | 10/10 PASS (staging → intermediate → marts) |
 
 > Full measured output → [`docs/metrics_results.md`](docs/metrics_results.md)
 
