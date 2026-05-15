@@ -13,7 +13,7 @@
 | Git | any | `git --version` |
 | make | any | `make --version` |
 | RAM | **8 GB free** | — |
-| Disk | **15 GB free** | — |
+| Disk | **20 GB free** (MinIO grows ~600 MB/h when running) | — |
 
 > **Windows users:** Docker Desktop + WSL2 backend is required. Git Bash hoặc PowerShell đều dùng được.  
 > **macOS users:** Docker Desktop hoặc OrbStack. Apple Silicon (M1/M2/M3) đã được test.  
@@ -169,8 +169,8 @@ Sau 2–3 phút phải thấy folder structure `year=.../month=.../day=.../`.
 ### Bước 4 — Airflow DAGs
 
 Mở http://localhost:8080 → DAGs.  
-Thấy 2 DAGs: `dbt_run` và `monitor_kafka_lag`.  
-Cả 2 mặc định paused. Để chạy thủ công: toggle ON rồi click "Trigger DAG".
+Thấy 3 DAGs: `dbt_run`, `monitor_kafka_lag`, `batch_daily_summary`.  
+Cả 3 mặc định paused. Để chạy thủ công: toggle ON rồi click "Trigger DAG".
 
 ### Bước 5 — dbt tests (sau khi có data)
 
@@ -218,20 +218,39 @@ docker exec airflow-scheduler dbt run \
 
 ### ClickHouse không có data sau khi start
 
-ClickHouse Docker entrypoint đôi khi skip init scripts nếu volume không sạch. Fix:
+`docker compose up` sau khi đã từng chạy trước → ClickHouse tìm thấy volume cũ và **skip init scripts**.  
+Biểu hiện: `dbt run` fail với `UNKNOWN_DATABASE food_delivery`.
+
+Fix — chạy init scripts thủ công:
 
 ```bash
-docker exec clickhouse bash -c \
-  "for f in /docker-entrypoint-initdb.d/*.sql; do clickhouse-client --multiquery < \$f; done"
+for f in clickhouse/init/*.sql; do
+  echo "=== $f ===" && \
+  MSYS_NO_PATHCONV=1 docker exec -i clickhouse clickhouse-client --multiquery < "$f"
+done
 ```
 
-### `kafka-init` exit code non-zero
+Verify: `docker exec clickhouse clickhouse-client --query "SHOW DATABASES"` phải thấy `food_delivery`.
 
-Topics chưa được tạo. Check:
+### `kafka-init` không tạo topics (race condition)
+
+`kafka-init` chạy trước khi Kafka broker fully ready → topics không được tạo → generator log `produced=0 errors=0`, Spark crash với `UnknownTopicOrPartitionException`.
+
+Fix — tạo topics thủ công:
+
 ```bash
-docker logs kafka-init
-# Nếu thấy "Connection refused": kafka chưa ready. Chờ thêm 30s rồi:
-docker compose restart kafka-init
+docker exec kafka kafka-topics --create --if-not-exists --topic raw.orders \
+  --partitions 3 --replication-factor 1 --bootstrap-server kafka:29092
+docker exec kafka kafka-topics --create --if-not-exists --topic raw.payments \
+  --partitions 3 --replication-factor 1 --bootstrap-server kafka:29092
+docker exec kafka kafka-topics --create --if-not-exists --topic raw.rider_events \
+  --partitions 3 --replication-factor 1 --bootstrap-server kafka:29092
+
+# Verify
+docker exec kafka kafka-topics --list --bootstrap-server kafka:29092
+
+# Restart Spark streaming jobs sau khi topics đã sẵn sàng
+docker compose restart spark-streaming-orders spark-streaming-payments spark-streaming-rider-events
 ```
 
 ### Spark Streaming không start / restart loop
@@ -309,18 +328,59 @@ MSYS_NO_PATHCONV=1 docker exec clickhouse clickhouse-client ...
 
 ---
 
-## 7. Stop & Cleanup
+## 7. Stop & Disk Management
+
+### Khi nào cần dừng?
+
+Pipeline tạo ra ~600 MB dữ liệu mỗi giờ (Parquet files trong MinIO). Trên máy dev **không nên để chạy qua đêm** nếu ổ C dưới 30 GB free.
+
+Kiểm tra nhanh:
+```bash
+make disk-usage
+```
+
+### Dừng bình thường (giữ nguyên data)
 
 ```bash
-# Stop core stack (giữ volumes — data không mất)
-make down
-
-# Stop monitoring stack
-make down-mon
-
-# Stop tất cả + xóa volumes (RESET HOÀN TOÀN — mất data)
-docker compose -f docker-compose.yml -f docker-compose.monitoring.yml down -v
+make down        # dừng tất cả (core + monitoring)
 ```
+
+Data vẫn còn trong Docker volumes — `make up` lại là tiếp tục ngay.
+
+### Xóa cold storage MinIO (giải phóng dung lượng nhanh nhất)
+
+ClickHouse, Kafka, Airflow không bị ảnh hưởng. Chỉ mất Parquet files và Spark checkpoints.
+
+```bash
+make clean-data
+```
+
+Sau đó `make up` để restart Spark streaming jobs. Spark sẽ bắt đầu lại từ đầu Kafka (offset `earliest`).
+
+### Reset hoàn toàn (mất toàn bộ data)
+
+```bash
+make purge       # xóa hết volumes
+make up          # fresh start
+```
+
+### Windows WSL2: ổ C vẫn đầy sau khi xóa data?
+
+Docker Desktop dùng file `ext4.vhdx` trong WSL2 — file này **không tự shrink** sau khi xóa data. Phải compact thủ công:
+
+```powershell
+# Chạy PowerShell as Administrator
+wsl --shutdown
+diskpart
+# Trong diskpart:
+select vdisk file="C:\Users\<username>\AppData\Local\Docker\wsl\data\ext4.vhdx"
+attach vdisk readonly
+compact vdisk
+detach vdisk
+exit
+```
+
+Kết quả thực tế: 61 GB → 3.5 GB sau compact (xem memory gotcha #24).
 
 ---
 
@@ -344,13 +404,16 @@ docker compose -f docker-compose.yml -f docker-compose.monitoring.yml down -v
 ## Quick Reference
 
 ```bash
-make up          # start core stack
-make up-mon      # start monitoring
-make down        # stop core stack
-make logs        # tail all logs
-make ps          # container status
-make test        # run dbt tests
-make metrics     # print CV metrics report
-make kafka-lag   # check Kafka consumer lag
+make up           # start core stack
+make up-mon       # start monitoring
+make down         # stop all (core + monitoring)
+make logs         # tail all logs
+make ps           # container status
+make test         # dbt deps + run + test (55/55)
+make metrics      # print CV metrics report
+make kafka-lag    # check Kafka consumer lag
 make kafka-topics # list Kafka topics
+make disk-usage   # Docker + MinIO + ClickHouse disk stats
+make clean-data   # xóa MinIO cold storage (giữ ClickHouse/Kafka)
+make purge        # reset hoàn toàn — xóa tất cả volumes
 ```
