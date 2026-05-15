@@ -511,6 +511,44 @@ services:
       RIDER_GPS_INTERVAL_SEC: ${RIDER_GPS_INTERVAL_SEC:-30}
 
   # ─────────────────────────────────────────────
+  # SPARK BATCH — daily one-shot job (cold path)
+  # Not started by default; triggered via:
+  #   docker compose --profile batch run --rm spark-batch-daily
+  #   docker compose --profile batch run --rm spark-batch-daily --date 2024-01-15
+  # ─────────────────────────────────────────────
+  spark-batch-daily:
+    build:
+      context: ./spark
+    container_name: spark-batch-daily
+    restart: "no"
+    profiles: ["batch"]
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - food-delivery-net
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    environment:
+      MINIO_ENDPOINT:  http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - --deploy-mode
+      - client
+      - --total-executor-cores
+      - "2"
+      - --executor-memory
+      - "2G"
+      - /opt/spark/jobs/batch_daily_summary.py
+
+  # ─────────────────────────────────────────────
   # KAFKA UI
   # ─────────────────────────────────────────────
   kafka-ui:
