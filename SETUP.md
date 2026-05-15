@@ -366,21 +366,49 @@ make up          # fresh start
 
 ### Windows WSL2: ổ C vẫn đầy sau khi xóa data?
 
-Docker Desktop dùng file `ext4.vhdx` trong WSL2 — file này **không tự shrink** sau khi xóa data. Phải compact thủ công:
+Docker Desktop dùng một file `.vhdx` trong WSL2 — file này **không tự shrink** sau khi xóa data bên trong. Phải compact thủ công.
+
+**Bước 1 — Tìm đúng đường dẫn file vhdx** (PowerShell bình thường):
 
 ```powershell
-# Chạy PowerShell as Administrator
+Get-ChildItem "C:\Users\$env:USERNAME\AppData\Local\Docker" -Filter "*.vhdx" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName, @{N='SizeGB';E={[math]::Round($_.Length/1GB,2)}}
+```
+
+Kết quả sẽ ra đường dẫn đầy đủ, ví dụ:
+```
+C:\Users\CaoPhon\AppData\Local\Docker\wsl\disk\docker_data.vhdx   17.5
+```
+
+**Bước 2 — Quit Docker Desktop hoàn toàn** (chuột phải icon system tray → Quit Docker Desktop).
+
+**Bước 3 — PowerShell Administrator:**
+
+```powershell
 wsl --shutdown
+```
+
+**Bước 4 — Vẫn trong PowerShell Admin, gõ `diskpart` rồi Enter:**
+
+```powershell
 diskpart
-# Trong diskpart:
-select vdisk file="C:\Users\<username>\AppData\Local\Docker\wsl\data\ext4.vhdx"
+```
+
+Chờ thấy prompt `DISKPART>` rồi paste từng dòng (thay path bằng kết quả từ Bước 1):
+
+```
+select vdisk file="C:\Users\CaoPhon\AppData\Local\Docker\wsl\disk\docker_data.vhdx"
+detach vdisk
 attach vdisk readonly
 compact vdisk
 detach vdisk
 exit
 ```
 
-Kết quả thực tế: 61 GB → 3.5 GB sau compact (xem memory gotcha #24).
+> `compact vdisk` mất 2–5 phút, không có progress bar — chờ đến khi thấy `DiskPart successfully compacted the virtual disk file.`
+
+> **Lưu ý:** `detach vdisk` đầu tiên là bắt buộc nếu file đang được Docker giữ — nếu không, `attach vdisk readonly` sẽ fail với lỗi "already attached".
+
+Kết quả thực tế: 17–61 GB → 1–3.5 GB sau compact.
 
 ---
 
