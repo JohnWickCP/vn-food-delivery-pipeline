@@ -29,7 +29,7 @@ Nói cụ thể hơn:
 
 **3. Hai con đường lưu trữ song song:**
 - **Con đường nóng:** Dữ liệu vào ClickHouse trong vài giây — dùng để hiển thị dashboard real-time trên Grafana
-- **Con đường lạnh:** Spark xử lý và lưu file Parquet vào MinIO (giống S3) — dùng để lưu trữ lâu dài và phân tích lịch sử
+- **Con đường lạnh:** Spark xử lý và lưu file Parquet vào MinIO (giống S3) — mỗi đêm Airflow chạy batch job đọc lại toàn bộ ngày hôm qua, tính toán chính xác (không bị giới hạn bởi cửa sổ thời gian như real-time), rồi nạp kết quả vào ClickHouse
 
 **4. Biến đổi dữ liệu (dbt)** — Mỗi giờ, dbt chạy các câu SQL để tính toán: doanh thu theo giờ, hiệu suất từng shipper, tỷ lệ hủy đơn theo nhà hàng, giờ cao điểm. Kết quả lưu thành các bảng sẵn sàng để query.
 
@@ -85,7 +85,7 @@ A production-style data engineering portfolio project simulating a food delivery
            │     Engine: ReplacingMergeTree(_ingested_at)           │
            │     Latency: seconds                                   │
            │                                                        │
-           └── COLD PATH (archival) ──────────────────────────────┐
+           └── COLD PATH (batch layer) ─────────────────────────┐
                                                                    │
                [PySpark 3.5 Structured Streaming]                  │
                  stream_orders / stream_payments / stream_riders   │
@@ -95,7 +95,15 @@ A production-style data engineering portfolio project simulating a food delivery
                [MinIO — S3-compatible]                             │
                  s3a://food-delivery-lake/raw/{topic}/             │
                  partitioned by year/month/day                     │
-                 Role: cold storage · replay · audit               │
+                        │                                          │
+               [Airflow @daily — batch_daily_summary]              │
+                 Spark reads full day → exact dedup on order_id    │
+                 writes s3a://.../batch/daily_summary/date=.../    │
+                        │                                          │
+                        ▼                                          │
+               [ClickHouse — batch_daily_city_stats]               │
+                 INSERT via s3() table function                     │
+                 Role: exact daily stats · historical reprocessing  │
                                                                    │
 └──────────────────────────────────────────────────────────────────┘
            │
@@ -192,13 +200,15 @@ vn-food-delivery-pipeline/
 ├── spark/
 │   ├── Dockerfile            # PySpark 3.5 + Kafka + S3A jars
 │   ├── jobs/                 # stream_orders, stream_payments, stream_rider_events
+│   │                         # batch_daily_summary (reads MinIO → aggregates → MinIO)
 │   └── conf/spark-defaults.conf
 ├── clickhouse/
 │   └── init/                 # 01_create_database, 02_raw_tables (ReplacingMergeTree),
 │                             # 03_views, 04_kafka_engine (Kafka Engine + MVs)
+│                             # 05_batch_tables (batch_daily_city_stats)
 ├── airflow/
 │   ├── Dockerfile            # python3.9, dbt-core==1.7.19, dbt-clickhouse==1.7.7
-│   └── dags/                 # dbt_run.py, monitor_kafka_lag.py
+│   └── dags/                 # dbt_run.py, monitor_kafka_lag.py, batch_daily_summary.py
 ├── dbt/
 │   ├── models/
 │   │   ├── staging/          # stg_orders, stg_payments, stg_riders, stg_order_items
@@ -236,13 +246,14 @@ dim_rider      ──┤──► fct_orders ──► rpt_hourly_revenue
 
 ## Architecture Decisions
 
-**Why dual-path (Kafka Engine + Spark→MinIO)?**
+**Why dual-path (Lambda Architecture)?**
 
-| | ClickHouse Kafka Engine (hot) | Spark → MinIO (cold) |
-|-|-------------------------------|----------------------|
-| Latency | seconds | minutes (S3A overhead) |
-| Role | real-time Grafana dashboards | long-term archive + replay |
-| Dedup | ReplacingMergeTree (lazy) + FINAL | watermark + dropDuplicates |
+| | ClickHouse Kafka Engine (hot) | Spark → MinIO → ClickHouse (batch) |
+|-|-------------------------------|-------------------------------------|
+| Latency | seconds | ~24h (runs next day at 1 AM) |
+| Role | real-time Grafana dashboards | exact daily stats + historical reprocessing |
+| Dedup | ReplacingMergeTree (lazy) + FINAL | full-day `dropDuplicates(["order_id"])` — no watermark approximation |
+| Reprocessing | not possible (Kafka retention 24h) | re-run any date: `docker compose --profile batch run --rm spark-batch-daily --date YYYY-MM-DD` |
 | Retention | unlimited (disk-bound) | unlimited (object storage) |
 
 **Why ReplacingMergeTree instead of plain MergeTree?**
@@ -261,7 +272,7 @@ MinIO S3 API already uses `9000`. Both services in the same Docker network would
 
 ## What I Learned
 
-- **Dual-path Lambda Architecture**: Speed layer (Kafka→ClickHouse Kafka Engine) for <10s latency dashboards; batch layer (Spark→MinIO Parquet) for durable cold storage and replay. Both paths consume from the same Kafka topics using separate consumer groups.
+- **True Lambda Architecture**: Speed layer (Kafka→ClickHouse Kafka Engine) for <10s latency dashboards; batch layer (Spark→MinIO→ClickHouse) for exact daily stats. Speed layer trades accuracy for latency (watermark drops late events, ReplacingMergeTree dedup is lazy). Batch layer trades latency for correctness (full-day exact dedup, re-runnable for any date). Both paths feed separate ClickHouse tables; Grafana queries whichever fits the use case.
 - **ClickHouse Kafka Engine pattern**: Requires exactly 3 objects — Kafka Engine table (buffer), ReplacingMergeTree table (storage), Materialized View (pipeline). Missing any one causes silent data loss.
 - **dbt layering discipline**: Staging = rename+cast only. Business logic (CASE WHEN, date derivations) belongs in intermediate. Marts reference only intermediate or other marts — never staging directly.
 - **Spark Structured Streaming dedup**: `dropDuplicates` must include the watermark column (`event_timestamp`) to bound state size. Without it, state grows unbounded and OOM is inevitable.
