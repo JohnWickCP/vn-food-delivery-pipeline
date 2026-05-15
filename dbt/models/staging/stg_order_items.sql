@@ -18,9 +18,9 @@ SELECT
     toDate(placed_at)                                           AS placed_date,
     JSONExtractString(item_json, 'item_id')                    AS item_id,
     JSONExtractString(item_json, 'name')                       AS item_name,
-    JSONExtractInt(item_json, 'price_vnd')                     AS price_vnd,
-    JSONExtractInt(item_json, 'quantity')                      AS quantity,
-    JSONExtractInt(item_json, 'price_vnd')
-        * JSONExtractInt(item_json, 'quantity')                AS line_total_vnd
+    JSONExtractUInt(item_json, 'price_vnd')                    AS price_vnd,
+    JSONExtractUInt(item_json, 'quantity')                     AS quantity,
+    JSONExtractUInt(item_json, 'price_vnd')
+        * JSONExtractUInt(item_json, 'quantity')               AS line_total_vnd
 FROM exploded
 WHERE JSONExtractString(item_json, 'item_id') != ''
