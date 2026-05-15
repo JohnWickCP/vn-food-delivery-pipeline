@@ -59,7 +59,7 @@ def main() -> None:
 
     payments = (
         spark.read.parquet(PAYMENTS_PATH)
-        .select("order_id", "payment_id", "payment_status", "amount_vnd", "processed_at")
+        .select("order_id", "payment_id", col("status").alias("payment_status"), "amount_vnd", "processed_at")
         .dropDuplicates(["payment_id"])
     )
 

@@ -12,7 +12,7 @@ class Payment(BaseModel):
     order_id: UUID
     amount_vnd: int
     method: Literal["cash", "momo", "vnpay", "zalopay", "bank_transfer"]
-    status: Literal["pending", "success", "failed", "refunded"]
+    status: Literal["success", "failed", "refunded"]
     gateway_transaction_id: Optional[str] = None
     processed_at: datetime
     event_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -13,7 +13,7 @@
 - Thêm path thứ 2: `Kafka → ClickHouse Kafka Engine` cho real-time dashboard
 - MinIO giữ nguyên nhưng role đổi: cold storage / replay only, không dùng cho analytics
 - Loại bỏ Airflow DAG `load_minio_clickhouse` — không còn cần thiết
-- Airflow giờ chỉ: `dbt_run` (hourly) + `monitor_kafka_lag` (every 5 min)
+- Airflow giờ có 3 DAGs: `dbt_run` (hourly) + `monitor_kafka_lag` (every 5 min) + `batch_daily_summary` (daily 2 AM, load Spark batch output vào ClickHouse)
 - Đổi MergeTree → ReplacingMergeTree cho real-time ClickHouse tables
 - Thêm `items String` column vào raw_orders (lưu JSON raw của items array)
 

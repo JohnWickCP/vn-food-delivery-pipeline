@@ -70,7 +70,7 @@ A production-style data engineering portfolio project simulating a food delivery
 │    RiderProducer  (200 riders, 30s GPS pings)                   │
 │           │                                                     │
 │           ▼                                                     │
-│  [Apache Kafka 3.6]  ── Topics:                                 │
+│  [Apache Kafka 3.5]  ── Topics:                                 │
 │    Broker × 1            - raw.orders      (3 partitions)       │
 │    Zookeeper × 1         - raw.payments    (3 partitions)       │
 │                          - raw.rider_events (3 partitions)      │
@@ -139,7 +139,7 @@ A production-style data engineering portfolio project simulating a food delivery
 
 | Tool | Version | Role |
 |------|---------|------|
-| Apache Kafka | 3.6 | Message broker, 3 topics × 3 partitions |
+| Apache Kafka | 3.5 (Confluent Platform 7.5.0) | Message broker, 3 topics × 3 partitions |
 | PySpark | 3.5 | Structured Streaming → MinIO cold path |
 | MinIO | 2024-01 | S3-compatible cold storage / replay archive |
 | ClickHouse | 24.1 | OLAP DWH — Kafka Engine hot ingestion + MergeTree |
@@ -269,6 +269,9 @@ MinIO S3 API already uses `9000`. Both services in the same Docker network would
 3. **No schema registry** — Avro + Confluent Schema Registry is production standard. Omitted to reduce complexity.
 4. **ClickHouse dedup is lazy** — Duplicates visible between background merges. Mitigated by `FINAL` keyword on all staging views and dbt models.
 5. **Airflow LocalExecutor** — production uses CeleryExecutor or KubernetesExecutor. Sufficient for single-machine demo.
+6. **Hardcoded credentials in batch DAG** — `airflow/dags/batch_daily_summary.py` hardcodes MinIO/ClickHouse host+credentials. Production: use Airflow Connections (Admin → Connections UI) and retrieve via `BaseHook.get_connection()`.
+7. **Spark batch not orchestrated by Airflow** — Streaming jobs run as `restart: unless-stopped` Docker services. Batch job runs via `docker compose --profile batch run`. Airflow DAG assumes Spark finished by 2 AM; no actual SparkSubmitOperator. Production: use `SparkSubmitOperator` or `KubernetesPodOperator`.
+8. **Non-atomic batch load** — `batch_daily_summary` DAG does DELETE then INSERT as separate statements. If INSERT fails mid-way, the day's data is gone until rerun. Production: use ReplacingMergeTree version column (insert new version, rely on FINAL for dedup) instead of DELETE+INSERT.
 
 ## What I Learned
 
