@@ -56,84 +56,89 @@ Nói cụ thể hơn:
 
 ---
 
-A production-style data engineering portfolio project simulating a food delivery platform (GrabFood/ShopeeFood scale) in Vietnam — demonstrating real-time streaming, dual-path ingestion, batch orchestration, and analytical modeling end-to-end.
+A production-style data engineering portfolio project simulating a food delivery platform (GrabFood/ShopeeFood scale) in Vietnam — demonstrating real-time streaming, dual-path Lambda Architecture ingestion, batch orchestration, and analytical modeling end-to-end. Fully Dockerized, zero cloud cost.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        INGESTION LAYER                          │
-│                                                                 │
-│  [Python Generator — asyncio, Pydantic v2]                      │
-│    OrderProducer  (5,000/min peak · ~1,000/min base)            │
-│    PaymentProducer (async queue from OrderProducer)             │
-│    RiderProducer  (200 riders, 30s GPS pings)                   │
-│           │                                                     │
-│           ▼                                                     │
-│  [Apache Kafka 3.5]  ── Topics:                                 │
-│    Broker × 1            - raw.orders      (3 partitions)       │
-│    Zookeeper × 1         - raw.payments    (3 partitions)       │
-│                          - raw.rider_events (3 partitions)      │
-└─────────────────────────────────────────────────────────────────┘
-           │
-           ├──── HOT PATH (real-time) ─────────────────────────────┐
-           │                                                        │
-           │   [ClickHouse 24.x — Kafka Engine]                     │
-           │     kafka_orders_queue  → orders_mv  → raw_orders      │
-           │     kafka_payments_queue → payments_mv → raw_payments  │
-           │     kafka_rider_events_queue → ... → raw_rider_events  │
-           │     Engine: ReplacingMergeTree(_ingested_at)           │
-           │     Latency: seconds                                   │
-           │                                                        │
-           └── COLD PATH (batch layer) ─────────────────────────┐
-                                                                   │
-               [PySpark 3.5 Structured Streaming]                  │
-                 stream_orders / stream_payments / stream_riders   │
-                 watermark + dropDuplicates → Parquet              │
-                        │                                          │
-                        ▼                                          │
-               [MinIO — S3-compatible]                             │
-                 s3a://food-delivery-lake/raw/{topic}/             │
-                 partitioned by year/month/day                     │
-                        │                                          │
-               [Airflow @daily — batch_daily_summary]              │
-                 Spark reads full day → exact dedup on order_id    │
-                 writes s3a://.../batch/daily_summary/date=.../    │
-                        │                                          │
-                        ▼                                          │
-               [ClickHouse — batch_daily_city_stats]               │
-                 INSERT via s3() table function                     │
-                 Role: exact daily stats · historical reprocessing  │
-                                                                   │
-└──────────────────────────────────────────────────────────────────┘
-           │
-           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    TRANSFORMATION LAYER                         │
-│                                                                 │
-│  [dbt-core 1.7 + dbt-clickhouse]                                │
-│    staging/   — rename + cast + FINAL dedup                     │
-│    intermediate/ — joins + business logic                       │
-│    marts/     — fct_orders, dim_*, rpt_hourly_revenue           │
-│                                                                 │
-│  [Apache Airflow 2.8]                                           │
-│    dbt_run DAG        — hourly at HH:05                         │
-│    monitor_kafka_lag  — every 5 min, alert on lag/silence       │
-└─────────────────────────────────────────────────────────────────┘
-           │
-           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    OBSERVABILITY LAYER                          │
-│                                                                 │
-│  Prometheus 2.45.6  ──scrape──►  Kafka JMX Exporter            │
-│       │                          ClickHouse Exporter            │
-│       │                          Node Exporter                  │
-│       │                          Spark Driver (4040)            │
-│       ▼                                                         │
-│  Grafana 10  ── Business Dashboard (orders/min, revenue/hr)     │
-│               ── Infra Dashboard   (Kafka lag, Spark batches)   │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  INGESTION LAYER                                                      │
+│                                                                       │
+│  Python Generator (asyncio + Pydantic v2)                            │
+│  ├─ OrderProducer    ~1,000–5,000 orders/min (off-peak → peak)      │
+│  ├─ PaymentProducer  async, linked to order state machine            │
+│  └─ RiderProducer    200 riders × GPS ping every 30 s               │
+│                │                                                      │
+│                ▼                                                      │
+│  Apache Kafka 3.5  ·  3 topics × 3 partitions                       │
+│  raw.orders  ·  raw.payments  ·  raw.rider_events                    │
+└────────────────┬─────────────────────────────────────────────────────┘
+                 │
+        ┌────────┴──────────┐
+        │                   │
+        ▼                   ▼
+┌───────────────┐  ┌─────────────────────────────────────────────────┐
+│  HOT PATH     │  │  COLD PATH                                       │
+│  (real-time)  │  │  (batch, nightly)                                │
+│               │  │                                                   │
+│  ClickHouse   │  │  PySpark Structured Streaming                    │
+│  Kafka Engine │  │  3 always-on Docker services                     │
+│               │  │  watermark 2 min · trigger 500 ms               │
+│  Kafka queue  │  │              │                                    │
+│  table        │  │              ▼                                    │
+│    │  (MV)    │  │  MinIO — S3-compatible data lake                 │
+│    ▼           │  │  s3a://food-delivery-lake/raw/{topic}/          │
+│  raw tables   │  │  partitioned year / month / day / hour          │
+│  (Replacing   │  │              │                                    │
+│  MergeTree)   │  │  Airflow @daily 2 AM                             │
+│               │  │  └─ Spark batch: exact dedup per day            │
+│  Latency: s   │  │     INSERT → ClickHouse via s3() function        │
+│               │  │  Latency: ~24 h (next morning)                   │
+└───────┬───────┘  └──────────────┬──────────────────────────────────┘
+        │                         │
+        └───────────┬─────────────┘
+                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  WAREHOUSE + TRANSFORMATION LAYER                                     │
+│                                                                       │
+│  ClickHouse 24.x  ·  columnar OLAP                                   │
+│  raw_orders / raw_payments / raw_rider_events  (ReplacingMergeTree)  │
+│  batch_daily_city_stats                        (MergeTree)           │
+│                                                                       │
+│  dbt-core 1.7 + dbt-clickhouse  (Airflow-triggered, hourly)         │
+│  staging/      → rename + cast + FINAL dedup                         │
+│  intermediate/ → joins, business logic (meal_period, metrics)        │
+│  marts/        → fct_orders · dim_restaurant · dim_rider             │
+│                   rpt_hourly_revenue                                  │
+│                                                                       │
+│  Apache Airflow 2.8                                                   │
+│  ├─ dbt_run             hourly at HH:05                              │
+│  ├─ monitor_kafka_lag   every 5 min, alert on lag / silence          │
+│  └─ batch_daily_summary @daily 2 AM                                  │
+└──────────────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  OBSERVABILITY LAYER                                                  │
+│                                                                       │
+│  Prometheus 2.45.6  ── 7 scrape targets:                             │
+│  Kafka JMX · ClickHouse · Node · Spark drivers (×3) · self          │
+│                    │                                                  │
+│  Grafana 10  ── 2 dashboards:                                        │
+│  Business: orders/min · revenue/hr · city breakdown                  │
+│  Infra:    Kafka lag · Spark batch duration · ClickHouse queries     │
+└──────────────────────────────────────────────────────────────────────┘
 ```
+
+### How data flows
+
+Each food order takes two parallel routes from generator to dashboard:
+
+**Hot path — seconds latency:** The generator publishes a JSON event to Kafka. ClickHouse's built-in Kafka Engine table reads from the topic continuously and pipes rows through a Materialized View into a `ReplacingMergeTree` table. The order is queryable in ClickHouse within seconds of being produced — no ETL job, no scheduling, no intermediate storage.
+
+**Cold path — next-day, exact:** The same Kafka event is also consumed by PySpark Structured Streaming (three always-on Docker services, one per topic). Spark applies a 2-minute watermark, deduplicates on `order_id + event_timestamp`, and writes compressed Parquet files to MinIO partitioned by `year/month/day/hour`. At 2 AM, Airflow triggers a Spark batch job that reads the full previous day from MinIO, applies exact deduplication (no watermark approximation, no dropped late events), and inserts aggregate stats into ClickHouse via the built-in `s3()` table function. Any date can be reprocessed on demand.
+
+**Both paths feed the same ClickHouse instance.** Hot tables answer "what is happening right now?". Batch tables answer "what exactly happened yesterday?". dbt runs hourly on top of both, producing `fct_orders`, dimension tables, and `rpt_hourly_revenue` that Grafana queries directly.
 
 ## Tech Stack
 
@@ -182,12 +187,24 @@ make metrics                  # print CV metrics report
 
 | Service | URL | Notes |
 |---------|-----|-------|
-| Airflow | http://localhost:8080 | admin/admin |
+| Airflow | http://localhost:8080 | admin / admin |
 | Spark Master | http://localhost:8081 | |
-| Grafana | http://localhost:3000 | admin/admin |
+| Grafana | http://localhost:3000 | admin / admin |
 | Prometheus | http://localhost:9090 | |
 | Kafka UI | http://localhost:8090 | |
-| MinIO Console | http://localhost:9001 | minioadmin/minioadmin |
+| MinIO Console | http://localhost:9001 | minioadmin / minioadmin |
+
+## Stopping & Cleanup
+
+The pipeline generates ~600 MB/h of Parquet files in MinIO. Stop before disk fills up.
+
+```bash
+make down          # stop all containers — data preserved in Docker volumes
+make clean-data    # delete MinIO Parquet + Spark checkpoints only (fastest disk recovery)
+make purge         # full reset: delete ALL volumes (ClickHouse, Kafka, Airflow metadata)
+```
+
+> **Windows WSL2:** Docker's `.vhdx` file does not shrink after deleting data inside it. After `make purge`, compact it manually with `diskpart` to reclaim disk space (tested: 61 GB → 3.5 GB). Full steps → [SETUP.md § 7](SETUP.md#7-stop--disk-management).
 
 ## Project Structure
 
@@ -223,7 +240,6 @@ vn-food-delivery-pipeline/
 ├── scripts/measure_metrics.sh
 ├── docs/
 │   ├── IMPLEMENTATION_NOTES.md     # Architecture decisions + per-phase gotchas
-│   ├── STUDY_GUIDE.md
 │   └── metrics_results.md          # Measured CV metrics
 ├── docker-compose.yml
 ├── docker-compose.monitoring.yml
@@ -251,7 +267,7 @@ dim_rider      ──┤──► fct_orders ──► rpt_hourly_revenue
 
 | | ClickHouse Kafka Engine (hot) | Spark → MinIO → ClickHouse (batch) |
 |-|-------------------------------|-------------------------------------|
-| Latency | seconds | ~24h (runs next day at 1 AM) |
+| Latency | seconds | ~24h (runs next day at 2 AM) |
 | Role | real-time Grafana dashboards | exact daily stats + historical reprocessing |
 | Dedup | ReplacingMergeTree (lazy) + FINAL | full-day `dropDuplicates(["order_id"])` — no watermark approximation |
 | Reprocessing | not possible (Kafka retention 24h) | re-run any date: `docker compose --profile batch run --rm spark-batch-daily --date YYYY-MM-DD` |
@@ -271,14 +287,5 @@ MinIO S3 API already uses `9000`. Both services in the same Docker network would
 4. **ClickHouse dedup is lazy** — Duplicates visible between background merges. Mitigated by `FINAL` keyword on all staging views and dbt models.
 5. **Airflow LocalExecutor** — production uses CeleryExecutor or KubernetesExecutor. Sufficient for single-machine demo.
 6. **Hardcoded credentials in batch DAG** — `airflow/dags/batch_daily_summary.py` hardcodes MinIO/ClickHouse host+credentials. Production: use Airflow Connections (Admin → Connections UI) and retrieve via `BaseHook.get_connection()`.
-7. **Spark batch not orchestrated by Airflow** — Streaming jobs run as `restart: unless-stopped` Docker services. Batch job runs via `docker compose --profile batch run`. Airflow DAG assumes Spark finished by 2 AM; no actual SparkSubmitOperator. Production: use `SparkSubmitOperator` or `KubernetesPodOperator`.
+7. **Spark batch not wired via SparkSubmitOperator** — Streaming jobs run as `restart: unless-stopped` Docker services. Batch job runs via `docker compose --profile batch run`. Airflow DAG assumes Spark finished by 2 AM; no actual SparkSubmitOperator. Production: use `SparkSubmitOperator` or `KubernetesPodOperator`.
 8. **Non-atomic batch load** — `batch_daily_summary` DAG does DELETE then INSERT as separate statements. If INSERT fails mid-way, the day's data is gone until rerun. Production: use ReplacingMergeTree version column (insert new version, rely on FINAL for dedup) instead of DELETE+INSERT.
-
-## What I Learned
-
-- **True Lambda Architecture**: Speed layer (Kafka→ClickHouse Kafka Engine) for <10s latency dashboards; batch layer (Spark→MinIO→ClickHouse) for exact daily stats. Speed layer trades accuracy for latency (watermark drops late events, ReplacingMergeTree dedup is lazy). Batch layer trades latency for correctness (full-day exact dedup, re-runnable for any date). Both paths feed separate ClickHouse tables; Grafana queries whichever fits the use case.
-- **ClickHouse Kafka Engine pattern**: Requires exactly 3 objects — Kafka Engine table (buffer), ReplacingMergeTree table (storage), Materialized View (pipeline). Missing any one causes silent data loss.
-- **dbt layering discipline**: Staging = rename+cast only. Business logic (CASE WHEN, date derivations) belongs in intermediate. Marts reference only intermediate or other marts — never staging directly.
-- **Spark Structured Streaming dedup**: `dropDuplicates` must include the watermark column (`event_timestamp`) to bound state size. Without it, state grows unbounded and OOM is inevitable.
-- **Docker Compose networking**: Kafka needs `INTERNAL://kafka:29092` for container-to-container and `EXTERNAL://localhost:9092` for host tools. ClickHouse native port remapped to 9900 to avoid conflict with MinIO 9000.
-- **Prometheus version matters**: 2.49.0 sends `q=2` in Accept headers (RFC 7231 violation) → Spark Jetty returns 400. Pinned to 2.45.6 LTS.
