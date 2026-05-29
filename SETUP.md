@@ -444,4 +444,5 @@ make kafka-topics # list Kafka topics
 make disk-usage   # Docker + MinIO + ClickHouse disk stats
 make clean-data   # xóa MinIO cold storage (giữ ClickHouse/Kafka)
 make purge        # reset hoàn toàn — xóa tất cả volumes
+make you
 ```
