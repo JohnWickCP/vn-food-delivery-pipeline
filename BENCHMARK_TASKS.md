@@ -688,16 +688,20 @@ while ($true) {
 **Kết quả:**
 | Metric | Giá trị |
 |--------|---------|
-| Schemas registered | 3 (orders, payments, rider_events) |
-| ClickHouse ingesting Avro | Y/N |
-| Spark reading Avro | Y/N |
-| Any schema evolution error | |
+| Schemas registered | 3 (raw.orders-value, raw.payments-value, raw.rider_events-value) |
+| ClickHouse ingesting Avro | Y — AvroConfluent format, format_avro_schema_registry_url |
+| Spark reading Avro | Y — fastavro Python UDF (from_avro() JVM SerializedLambda conflict workaround) |
+| Schema Registry port | 8085 (8082 was taken by spark-worker-1) |
+| Any schema evolution error | None; items field serialized as JSON string per Avro schema |
+| ClickHouse rows with producer_ts > 0 | 158,783 / 158,783 (100% Avro) |
+
+**Note:** `from_avro()` caused ClassCastException (SerializedLambda serialization conflict) in Spark client mode with Scala Function3. Workaround: fastavro Python UDF decodes Avro binary on executor (pickle serialization, no JVM lambda conflict).
 
 **Commits:**
-1. `feat(docker-compose): add Confluent Schema Registry on port 8082`
+1. `feat(docker-compose): add Confluent Schema Registry on port 8082` (later changed to 8085)
 2. `feat(generator): migrate to Avro serialization with Schema Registry`
 3. `feat(clickhouse): update Kafka Engine tables to AvroConfluent format`
-4. `feat(spark): update streaming jobs to deserialize Avro via Schema Registry`
+4. `feat(spark): update streaming jobs to deserialize Avro via Schema Registry (fastavro UDF)`
 
 ---
 
