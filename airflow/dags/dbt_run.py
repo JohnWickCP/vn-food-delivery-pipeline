@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -12,13 +13,15 @@ _DBT_DEPS = f"dbt deps --project-dir {DBT_DIR} --profiles-dir {DBT_PROFILES_DIR}
 _DBT_CMD  = f"dbt --no-write-json run  --project-dir {DBT_DIR} --profiles-dir {DBT_PROFILES_DIR}"
 _DBT_TEST = f"dbt --no-write-json test --project-dir {DBT_DIR} --profiles-dir {DBT_PROFILES_DIR}"
 
+_ALERT_EMAIL = os.getenv("AIRFLOW_ALERT_EMAIL", "")
+
 default_args = {
     "owner": "airflow",
     "retries": 1,
     "retry_delay": timedelta(minutes=3),
-    "email_on_failure": True,
+    "email_on_failure": bool(_ALERT_EMAIL),
     "email_on_retry": False,
-    "email": ["caophon9ats2018@gmail.com"],
+    "email": [_ALERT_EMAIL] if _ALERT_EMAIL else [],
 }
 
 with DAG(

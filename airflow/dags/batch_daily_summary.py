@@ -14,6 +14,7 @@ Why a separate batch layer?
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta
 
 from airflow.decorators import dag, task
@@ -21,12 +22,13 @@ from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOpe
 
 logger = logging.getLogger(__name__)
 
-_MINIO_ENDPOINT  = "http://minio:9000"
-_MINIO_ACCESS    = "minioadmin"
-_MINIO_SECRET    = "minioadmin"
+_MINIO_ENDPOINT  = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
+_MINIO_ACCESS    = os.getenv("MINIO_ROOT_USER", "minioadmin")
+_MINIO_SECRET    = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
 _BUCKET          = "food-delivery-lake"
-_CH_HOST         = "clickhouse"
-_CH_PORT         = 9000   # native TCP inside Docker network
+_CH_HOST         = os.getenv("CLICKHOUSE_HOST", "clickhouse")
+_CH_PORT         = int(os.getenv("CLICKHOUSE_NATIVE_PORT", "9000"))
+_ALERT_EMAIL     = os.getenv("AIRFLOW_ALERT_EMAIL", "")
 
 
 @dag(
@@ -39,9 +41,9 @@ _CH_PORT         = 9000   # native TCP inside Docker network
     default_args={
         "retries": 1,
         "retry_delay": timedelta(minutes=5),
-        "email_on_failure": True,
+        "email_on_failure": bool(_ALERT_EMAIL),
         "email_on_retry": False,
-        "email": ["caophon9ats2018@gmail.com"],
+        "email": [_ALERT_EMAIL] if _ALERT_EMAIL else [],
     },
     tags=["batch", "lambda", "spark", "clickhouse"],
 )

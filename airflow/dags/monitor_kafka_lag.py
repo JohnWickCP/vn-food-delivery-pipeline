@@ -14,6 +14,7 @@ _KAFKA_SERVERS    = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 _TOPICS           = ["raw.orders", "raw.payments", "raw.rider_events"]
 _LAG_THRESHOLD    = int(os.getenv("KAFKA_LAG_ALERT_THRESHOLD", "10000"))  # per topic
 _SILENT_THRESHOLD = 0   # alert if 0 new messages since last check
+_ALERT_EMAIL      = os.getenv("AIRFLOW_ALERT_EMAIL", "")
 
 
 def _get_high_watermarks() -> dict[str, int]:
@@ -119,9 +120,9 @@ def _get_consumer_lag(group_ids: list[str], high_watermarks: dict[str, int]) -> 
     default_args={
         "retries": 1,
         "retry_delay": timedelta(minutes=1),
-        "email_on_failure": True,
+        "email_on_failure": bool(_ALERT_EMAIL),
         "email_on_retry": False,
-        "email": ["caophon9ats2018@gmail.com"],
+        "email": [_ALERT_EMAIL] if _ALERT_EMAIL else [],
     },
     tags=["pipeline", "monitor"],
 )

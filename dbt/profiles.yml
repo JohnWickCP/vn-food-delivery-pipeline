@@ -1,0 +1,16 @@
+food_delivery:
+  target: dev
+  outputs:
+    dev:
+      type: clickhouse
+      schema: food_delivery_dbt
+      host: "{{ env_var('DBT_CLICKHOUSE_HOST', 'clickhouse') }}"
+      port: "{{ env_var('DBT_CLICKHOUSE_PORT', '8123') | int }}"
+      user: "{{ env_var('DBT_CLICKHOUSE_USER', 'default') }}"
+      password: "{{ env_var('DBT_CLICKHOUSE_PASSWORD', '') }}"
+      secure: false
+      verify: false
+      connect_timeout: 10
+      send_receive_timeout: 300
+      custom_settings:
+        allow_suspicious_low_cardinality_types: 1
