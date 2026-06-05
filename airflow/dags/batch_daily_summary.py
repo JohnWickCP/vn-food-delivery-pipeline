@@ -66,7 +66,12 @@ def batch_daily_summary():
 
     @task
     def check_spark_output(**context) -> None:
-        """Verify Spark wrote Parquet output before loading."""
+        """Verify Spark wrote Parquet output before loading.
+
+        On missing output: raises FileNotFoundError → task fails → Airflow retries
+        once after 5 min (default_args retries=1) → if still missing, DAG fails
+        and sends email alert (email_on_failure=True).
+        """
         import boto3
 
         ds = context["ds"]
@@ -85,7 +90,22 @@ def batch_daily_summary():
 
     @task
     def load_to_clickhouse(**context) -> None:
-        """INSERT INTO batch_daily_city_stats using ClickHouse s3() function."""
+        """INSERT INTO batch_daily_city_stats using ClickHouse s3() function.
+
+        Atomicity note: DELETE and INSERT are two separate ClickHouse statements —
+        not wrapped in a transaction. If INSERT fails mid-flight, the day's rows are
+        absent until the next retry. Retry is idempotent: DELETE is a no-op on already-
+        deleted rows, then INSERT re-loads the full partition.
+
+        ClickHouse DELETE FROM on MergeTree is an async lightweight mutation (parts are
+        rebuilt in the background), so a brief overlap between old and new rows is
+        possible during normal execution. Eventual consistency is guaranteed once the
+        mutation and the INSERT both complete.
+
+        Partial load risk: if the s3() read fails after ClickHouse has already committed
+        some INSERT blocks, those blocks remain. The retry's DELETE will clean them up
+        before re-inserting. No manual intervention needed for single-day failures.
+        """
         from clickhouse_driver import Client
 
         ds = context["ds"]
