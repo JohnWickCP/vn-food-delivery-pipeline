@@ -1,4 +1,6 @@
+import logging
 import os
+import time
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
@@ -8,6 +10,8 @@ from pyspark.sql.types import (
     ArrayType, IntegerType, LongType, StringType, StructField,
     StructType, TimestampType,
 )
+
+logger = logging.getLogger(__name__)
 
 KAFKA_SERVERS   = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 MINIO_ENDPOINT  = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
@@ -85,12 +89,27 @@ def main() -> None:
         .withColumn("day",   dayofmonth(col("event_timestamp")))
     )
 
+    def write_batch_with_timing(batch_df, epoch_id):
+        if batch_df.isEmpty():
+            return
+        row_count = batch_df.count()
+        t0 = time.perf_counter()
+        (batch_df.write
+            .format("parquet")
+            .option("path", OUTPUT_PATH)
+            .partitionBy("year", "month", "day")
+            .mode("append")
+            .save())
+        elapsed = time.perf_counter() - t0
+        logger.warning(
+            "BATCH_TIMING epoch=%d rows=%d write_sec=%.3f rows_per_sec=%.0f",
+            epoch_id, row_count, elapsed, row_count / elapsed if elapsed > 0 else 0,
+        )
+
     (
         orders.writeStream
-        .format("parquet")
-        .option("path", OUTPUT_PATH)
+        .foreachBatch(write_batch_with_timing)
         .option("checkpointLocation", CHECKPOINT_PATH)
-        .partitionBy("year", "month", "day")
         .trigger(processingTime="500 milliseconds")
         .outputMode("append")
         .start()

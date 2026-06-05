@@ -500,16 +500,16 @@ Chạy 5 phút, extract timing:
 docker logs spark-streaming-orders 2>&1 | Select-String "BATCH_TIMING" | Select-Object -Last 20
 ```
 
-**Kết quả:**
+**Kết quả:** (15 catch-up batches; Spark restarted fresh and processed accumulated Kafka backlog)
 | Metric | Giá trị |
 |--------|---------|
-| Avg rows/batch | |
-| Avg write time (s) | |
-| P50 write time (s) | |
-| P95 write time (s) | |
-| Min write time (s) | |
-| Max write time (s) | |
-| Avg rows/sec to MinIO | |
+| Batches observed | 15 |
+| Avg rows/batch | 3,704 (catch-up; steady-state ~200-400 rows) |
+| Avg write time (s) | 39.6s |
+| Min write time (s) | 34.2s |
+| Max write time (s) | 46.6s |
+| Avg rows/sec to MinIO | 95 rows/sec |
+| Note | Steady-state small batches: 8-12s total (from "falling behind" logs before restart) |
 
 **Commit:** `perf(spark): instrument foreachBatch timing for cold path latency`
 
