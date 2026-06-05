@@ -36,7 +36,7 @@ Source column references the task that produced the number.
 
 ### Reliability / Observability
 
-- Demonstrated **Kafka broker restart recovery in ~40s** with zero message loss under graceful SIGTERM shutdown; Spark resumes from checkpoint offset — hard-crash (SIGKILL) scenario not tested, RF=1 would risk in-flight loss
+- Demonstrated **Kafka broker failure recovery under both SIGTERM and SIGKILL**: SIGTERM recovers in ~40s (zero loss); SIGKILL recovers in ~116s (zero loss on Docker — OS page cache persists after process kill); ClickHouse Kafka Engine reconnects immediately in both scenarios; Spark resumes from MinIO checkpoint with 122k-row catch-up batch on SIGKILL restart; documented RF=1 vs RF≥2 trade-off for real hardware fault tolerance
 - Instrumented **7/7 Prometheus targets** (Kafka exporter, ClickHouse exporter, node exporter, 3× Spark Prometheus endpoints, Prometheus self-scrape) with Grafana dashboards; `raw.payments` consumer lag structurally ~52 msgs by design (payments trail orders by 10–180s)
 - Added **Data Freshness SLA panel** in Grafana: ClickHouse query measures seconds since last order, with green/yellow/red thresholds at 60s/300s
 - Configured **Airflow email failure alerting** across all 3 DAGs (dbt_run, monitor_kafka_lag, batch_daily_summary) via SMTP
@@ -65,8 +65,10 @@ Source column references the task that produced the number.
 | dbt run (10 models, internal) | 1.96s | P1-T03 |
 | dbt test (55 tests, internal) | 3.56s | P1-T03 |
 | dbt incremental fct_orders | 1.25s | P6-T12 |
-| Kafka failure recovery | ~40s | P3-T08 |
-| Messages lost on broker kill | 0 | P3-T08 |
+| Kafka failure recovery (SIGTERM) | ~40s | P3-T08 |
+| Kafka failure recovery (SIGKILL) | ~116s to first batch | P3-T08b |
+| Messages lost on broker kill (SIGTERM) | 0 | P3-T08 |
+| Messages lost on broker kill (SIGKILL, Docker) | 0 | P3-T08b |
 | Spark foreachBatch avg write | 39.6s (large batches) | P3-T09 |
 | MinIO throughput (large batches) | 95 rows/sec | P3-T09 |
 | Prometheus targets | 7/7 UP | prior session |

@@ -222,13 +222,32 @@ ClickHouse handles 10 concurrent analytical queries at P50=93ms, P95=116ms. 1.4�
 
 ## 12. Kafka Broker Failure Recovery (2026-06-05)
 
+### 12a. Graceful shutdown (SIGTERM / docker stop)
+
 | Metric | Value |
 |--------|-------|
 | Downtime | 10s (docker stop → graceful SIGTERM) |
 | Spark recovery time | **~40s** after Kafka restart |
-| Messages lost | **0** (SIGTERM allows graceful shutdown — in-flight committed) |
+| Messages lost | **0** |
 | Checkpoint honored | Yes — Spark resumed from last committed offset |
-| Scenario caveat | Graceful shutdown only; SIGKILL (hard crash) not tested — RF=1 would risk in-flight message loss |
+
+### 12b. Hard kill (SIGKILL / docker kill) — 2026-06-05
+
+| Metric | Value |
+|--------|-------|
+| Kafka downtime | **~77s** (kill 20:30:05 → healthy 20:31:22) |
+| Spark detection latency | **<1s** — `NetworkClient` WARN within 1s of kill |
+| Spark crash + Docker restart | **86s** after kill (exit code 137 → restart policy) |
+| Spark first batch start | **~116s** after kill (~34s after Kafka healthy) |
+| First catch-up batch | **122,349 rows** (epoch=0; all backlog since last checkpoint) |
+| Messages lost from Kafka log | **0** |
+| ClickHouse Kafka Engine recovery | **~immediate** — consumer group reconnected automatically |
+| Checkpoint honored | Yes — Spark resumed from last committed offset |
+| `failOnDataLoss=false` behavior | Job retried NetworkClient ~60s then crashed; Docker restart policy auto-recovered |
+
+**Why 0 message loss on SIGKILL:** Docker SIGKILL kills the process but does not discard the OS page cache. Kafka writes go to the Linux page cache first; those writes persist after the process is killed and are recovered on restart. This differs from a real hardware failure (power-off, kernel panic) where the page cache IS lost. With RF=1 and a real server crash, any unfsynced messages (O(10–100ms) of writes = ~0.2–2 messages at 1,244/min) would be permanently lost.
+
+**Mitigation for production:** RF≥2 + `min.insync.replicas=2` + `acks=all` on producer — survives single-broker hard crash with zero loss.
 
 ---
 
@@ -254,7 +273,8 @@ Wall time dominated by Python interpreter startup (~8s). dbt internal SQL time i
 | ClickHouse compression | 2× | **2.4× raw_orders, 1.9× rider_events, 1.2× payments** |
 | dbt test coverage | 100% (55 tests) | **55/55 PASS in 3.56s** |
 | dbt pipeline | fast refresh | **full run 1.96s, incremental 1.25s** |
-| Kafka recovery | resilient | **40s recovery, 0 messages lost** |
+| Kafka recovery (SIGTERM) | resilient | **40s recovery, 0 messages lost** |
+| Kafka recovery (SIGKILL) | resilient | **116s to first batch, 0 messages lost** (Docker — OS page cache survives; real hardware crash would risk loss on RF=1) |
 | Prometheus targets | 7/7 | **7/7 UP** |
 | MinIO cold storage | growing continuously | 95 rows/sec Spark→MinIO throughput |
 | dbt models | 10 models, 3 layers | 10/10 PASS + incremental fct_orders |
