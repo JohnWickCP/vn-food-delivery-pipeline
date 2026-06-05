@@ -28,6 +28,7 @@ RIDER_POOL = [uuid4() for _ in range(NUM_RIDERS)]
 KAFKA_PRODUCER_CONFIG: dict = {
     "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
     "acks": "all",
+    "enable.idempotence": True,
     "retries": 3,
     "retry.backoff.ms": 100,
     "compression.type": "snappy",
