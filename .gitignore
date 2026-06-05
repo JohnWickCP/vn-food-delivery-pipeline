@@ -51,3 +51,10 @@ ARCHITECTURE_GUIDE.md
 docs/architecture.png
 docs/data_model.png
 docs/STUDY_GUIDE.md
+
+# Screenshots — chỉ track folder, không track ảnh và guide nội bộ
+screenshots/*.png
+screenshots/*.jpg
+screenshots/*.jpeg
+screenshots/*.gif
+screenshots/SCREENSHOT_GUIDE.md

@@ -70,7 +70,7 @@ A production-style data engineering portfolio project simulating a food delivery
 │  └─ RiderProducer    200 riders × GPS ping every 30 s               │
 │                │                                                      │
 │                ▼                                                      │
-│  Apache Kafka 3.5  ·  3 topics × 3 partitions                       │
+│  Apache Kafka 3.5 (Confluent Platform 7.5.0)  ·  3 topics × 3 partitions │
 │  raw.orders  ·  raw.payments  ·  raw.rider_events                    │
 └────────────────┬─────────────────────────────────────────────────────┘
                  │
@@ -124,7 +124,7 @@ A production-style data engineering portfolio project simulating a food delivery
 │  Prometheus 2.45.6  ── 7 scrape targets:                             │
 │  Kafka JMX · ClickHouse · Node · Spark drivers (×3) · self          │
 │                    │                                                  │
-│  Grafana 10  ── 2 dashboards:                                        │
+│  Grafana 10.2.0  ── 2 dashboards:                                    │
 │  Business: orders/min · revenue/hr · city breakdown                  │
 │  Infra:    Kafka lag · Spark batch duration · ClickHouse queries     │
 └──────────────────────────────────────────────────────────────────────┘
@@ -148,12 +148,12 @@ Each food order takes two parallel routes from generator to dashboard:
 | PySpark | 3.5 | Structured Streaming → MinIO cold path |
 | MinIO | 2024-01 | S3-compatible cold storage / replay archive |
 | ClickHouse | 24.1 | OLAP DWH — Kafka Engine hot ingestion + MergeTree |
-| Apache Airflow | 2.8 | dbt orchestration + Kafka lag monitoring |
+| Apache Airflow | 2.8.0 | dbt orchestration + Kafka lag monitoring |
 | dbt-core | 1.7.19 | SQL transformation (staging → intermediate → marts) |
 | dbt-clickhouse | 1.7.7 | ClickHouse adapter for dbt |
-| Grafana | 10 | Business + infra dashboards |
+| Grafana | 10.2.0 | Business + infra dashboards |
 | Prometheus | 2.45.6 | Metrics scraping (7 targets) |
-| Docker Compose | v2 | Full local infra (20 services) |
+| Docker Compose | v2 | Full local infra (20 core + 5 monitoring containers) |
 | Python | 3.11 | Async data generator + Pydantic v2 schemas |
 
 ## Measured Results
@@ -283,7 +283,7 @@ MinIO S3 API already uses `9000`. Both services in the same Docker network would
 
 1. **Single Kafka broker** — `replication-factor=1`. Production needs 3+ brokers for HA.
 2. **Spark latency ~10s in dev** — S3A overhead per micro-batch on single-machine Docker. Trigger interval = 500ms but actual end-to-end = 8–18s. On a real cluster with proper S3A connection pooling, 500ms is achievable.
-3. **No schema registry** — Avro + Confluent Schema Registry is production standard. Omitted to reduce complexity.
+3. **Schema Registry present but not on critical path** — `cp-schema-registry:7.5.0` is in the stack. Spark streaming jobs use a fastavro UDF instead of `from_avro()` (eliminated a `ClassCastException` with Confluent's deserializer). Schema Registry is available for future Avro enforcement.
 4. **ClickHouse dedup is lazy** — Duplicates visible between background merges. Mitigated by `FINAL` keyword on all staging views and dbt models.
 5. **Airflow LocalExecutor** — production uses CeleryExecutor or KubernetesExecutor. Sufficient for single-machine demo.
 6. **Hardcoded credentials in batch DAG** — `airflow/dags/batch_daily_summary.py` hardcodes MinIO/ClickHouse host+credentials. Production: use Airflow Connections (Admin → Connections UI) and retrieve via `BaseHook.get_connection()`.
