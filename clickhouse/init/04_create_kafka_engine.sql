@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS food_delivery.kafka_orders_queue (
     payment_method    String,
     platform          String,
     placed_at         String,
-    event_timestamp   String
+    event_timestamp   String,
+    producer_ts       Float64
 )
 ENGINE = Kafka
 SETTINGS
@@ -57,6 +58,7 @@ SELECT
     platform,
     parseDateTime64BestEffort(placed_at, 3)       AS placed_at,
     parseDateTime64BestEffort(event_timestamp, 3) AS event_timestamp,
+    producer_ts,
     now()                                         AS _ingested_at
 FROM food_delivery.kafka_orders_queue;
 
@@ -73,7 +75,8 @@ CREATE TABLE IF NOT EXISTS food_delivery.kafka_payments_queue (
     status                  String,
     gateway_transaction_id  Nullable(String),
     processed_at            String,
-    event_timestamp         String
+    event_timestamp         String,
+    producer_ts             Float64
 )
 ENGINE = Kafka
 SETTINGS
@@ -93,6 +96,7 @@ SELECT
     gateway_transaction_id,
     parseDateTime64BestEffort(processed_at, 3)      AS processed_at,
     parseDateTime64BestEffort(event_timestamp, 3)   AS event_timestamp,
+    producer_ts,
     now()                                           AS _ingested_at
 FROM food_delivery.kafka_payments_queue;
 
@@ -111,7 +115,8 @@ CREATE TABLE IF NOT EXISTS food_delivery.kafka_rider_events_queue (
     speed_kmh       Float32,
     status          String,
     battery_pct     UInt8,
-    event_timestamp String
+    event_timestamp String,
+    producer_ts     Float64
 )
 ENGINE = Kafka
 SETTINGS
@@ -133,5 +138,6 @@ SELECT
     status,
     battery_pct,
     parseDateTime64BestEffort(event_timestamp, 3)   AS event_timestamp,
+    producer_ts,
     now()                                           AS _ingested_at
 FROM food_delivery.kafka_rider_events_queue;

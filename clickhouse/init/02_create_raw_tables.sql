@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS food_delivery.raw_orders (
     platform          LowCardinality(String),
     placed_at         DateTime64(3, 'Asia/Ho_Chi_Minh'),
     event_timestamp   DateTime64(3, 'UTC'),
+    producer_ts       Float64 DEFAULT 0,
     _ingested_at      DateTime DEFAULT now()
 )
 ENGINE = ReplacingMergeTree(_ingested_at)
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS food_delivery.raw_payments (
     gateway_transaction_id  Nullable(String),
     processed_at            DateTime64(3, 'Asia/Ho_Chi_Minh'),
     event_timestamp         DateTime64(3, 'UTC'),
+    producer_ts             Float64 DEFAULT 0,
     _ingested_at            DateTime DEFAULT now()
 )
 ENGINE = ReplacingMergeTree(_ingested_at)
@@ -51,6 +53,7 @@ CREATE TABLE IF NOT EXISTS food_delivery.raw_rider_events (
     status          LowCardinality(String),
     battery_pct     UInt8,
     event_timestamp DateTime64(3, 'UTC'),
+    producer_ts     Float64 DEFAULT 0,
     _ingested_at    DateTime DEFAULT now()
 )
 ENGINE = ReplacingMergeTree(_ingested_at)
