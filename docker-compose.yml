@@ -101,6 +101,32 @@ services:
       kafka-topics --list --bootstrap-server kafka:29092
 
   # ─────────────────────────────────────────────
+  # CONFLUENT SCHEMA REGISTRY
+  # ─────────────────────────────────────────────
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.5.0
+    container_name: schema-registry
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    ports:
+      - "8082:8081"   # Schema Registry API: http://localhost:8082
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka:29092"
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - food-delivery-net
+
+  # ─────────────────────────────────────────────
   # MINIO — S3-compatible object storage
   # ─────────────────────────────────────────────
   minio:
@@ -239,6 +265,8 @@ services:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
+      schema-registry:
+        condition: service_healthy
     networks:
       - food-delivery-net
     volumes:
@@ -246,6 +274,7 @@ services:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
@@ -279,6 +308,8 @@ services:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
+      schema-registry:
+        condition: service_healthy
     networks:
       - food-delivery-net
     volumes:
@@ -286,6 +317,7 @@ services:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
@@ -319,6 +351,8 @@ services:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
+      schema-registry:
+        condition: service_healthy
     networks:
       - food-delivery-net
     volumes:
@@ -326,6 +360,7 @@ services:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
@@ -509,10 +544,13 @@ services:
         condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
+      schema-registry:
+        condition: service_healthy
     networks:
       - food-delivery-net
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       ORDERS_PER_MIN_PEAK: ${ORDERS_PER_MIN_PEAK:-5000}
       ORDERS_PER_MIN_BASE: ${ORDERS_PER_MIN_BASE:-1200}
       NUM_RIDERS: ${NUM_RIDERS:-200}

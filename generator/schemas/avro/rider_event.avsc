@@ -1,0 +1,18 @@
+{
+  "type": "record",
+  "name": "RiderEvent",
+  "namespace": "vn.fooddelivery",
+  "fields": [
+    {"name": "event_id",        "type": "string"},
+    {"name": "rider_id",        "type": "string"},
+    {"name": "order_id",        "type": ["null", "string"], "default": null},
+    {"name": "city",            "type": "string"},
+    {"name": "latitude",        "type": "float"},
+    {"name": "longitude",       "type": "float"},
+    {"name": "speed_kmh",       "type": "float"},
+    {"name": "status",          "type": "string"},
+    {"name": "battery_pct",     "type": "int"},
+    {"name": "event_timestamp", "type": "string"},
+    {"name": "producer_ts",     "type": "double"}
+  ]
+}

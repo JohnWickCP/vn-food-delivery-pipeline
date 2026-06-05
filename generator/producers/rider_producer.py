@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import random
 from datetime import datetime, timezone
 from typing import Optional
@@ -12,6 +13,8 @@ from producers.base_producer import BaseProducer
 from schemas.rider_event import RiderEvent
 
 logger = logging.getLogger(__name__)
+
+_AVSC = os.path.join(os.path.dirname(__file__), "..", "schemas", "avro", "rider_event.avsc")
 
 # Bounding boxes from master plan
 _GPS_BOUNDS: dict[str, dict[str, tuple[float, float]]] = {
@@ -75,7 +78,7 @@ class _Rider:
 
 class RiderProducer(BaseProducer):
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(avsc_path=_AVSC)
         self.riders = self._init_riders()
 
     def _init_riders(self) -> list[_Rider]:

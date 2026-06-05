@@ -1,0 +1,24 @@
+{
+  "type": "record",
+  "name": "Order",
+  "namespace": "vn.fooddelivery",
+  "fields": [
+    {"name": "order_id",         "type": "string"},
+    {"name": "customer_id",      "type": "string"},
+    {"name": "restaurant_id",    "type": "string"},
+    {"name": "rider_id",         "type": "string"},
+    {"name": "city",             "type": "string"},
+    {"name": "district",         "type": "string"},
+    {"name": "status",           "type": "string"},
+    {"name": "items",            "type": "string"},
+    {"name": "subtotal_vnd",     "type": "long"},
+    {"name": "delivery_fee_vnd", "type": "long"},
+    {"name": "discount_vnd",     "type": "long"},
+    {"name": "total_vnd",        "type": "long"},
+    {"name": "payment_method",   "type": "string"},
+    {"name": "platform",         "type": "string"},
+    {"name": "placed_at",        "type": "string"},
+    {"name": "event_timestamp",  "type": "string"},
+    {"name": "producer_ts",      "type": "double"}
+  ]
+}

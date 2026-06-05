@@ -36,9 +36,9 @@ SETTINGS
     kafka_broker_list                        = 'kafka:29092',
     kafka_topic_list                         = 'raw.orders',
     kafka_group_name                         = 'clickhouse-consumer-orders',
-    kafka_format                             = 'JSONEachRow',
-    kafka_skip_broken_messages               = 10,
-    input_format_json_read_arrays_as_strings = 1;
+    kafka_format                             = 'AvroConfluent',
+    format_avro_schema_registry_url          = 'http://schema-registry:8081',
+    kafka_skip_broken_messages               = 10;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS food_delivery.orders_mv TO food_delivery.raw_orders AS
 SELECT
@@ -80,11 +80,12 @@ CREATE TABLE IF NOT EXISTS food_delivery.kafka_payments_queue (
 )
 ENGINE = Kafka
 SETTINGS
-    kafka_broker_list            = 'kafka:29092',
-    kafka_topic_list             = 'raw.payments',
-    kafka_group_name             = 'clickhouse-consumer-payments',
-    kafka_format                 = 'JSONEachRow',
-    kafka_skip_broken_messages   = 10;
+    kafka_broker_list                    = 'kafka:29092',
+    kafka_topic_list                     = 'raw.payments',
+    kafka_group_name                     = 'clickhouse-consumer-payments',
+    kafka_format                         = 'AvroConfluent',
+    format_avro_schema_registry_url      = 'http://schema-registry:8081',
+    kafka_skip_broken_messages           = 10;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS food_delivery.payments_mv TO food_delivery.raw_payments AS
 SELECT
@@ -120,11 +121,12 @@ CREATE TABLE IF NOT EXISTS food_delivery.kafka_rider_events_queue (
 )
 ENGINE = Kafka
 SETTINGS
-    kafka_broker_list            = 'kafka:29092',
-    kafka_topic_list             = 'raw.rider_events',
-    kafka_group_name             = 'clickhouse-consumer-rider-events',
-    kafka_format                 = 'JSONEachRow',
-    kafka_skip_broken_messages   = 10;
+    kafka_broker_list                    = 'kafka:29092',
+    kafka_topic_list                     = 'raw.rider_events',
+    kafka_group_name                     = 'clickhouse-consumer-rider-events',
+    kafka_format                         = 'AvroConfluent',
+    format_avro_schema_registry_url      = 'http://schema-registry:8081',
+    kafka_skip_broken_messages           = 10;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS food_delivery.rider_events_mv TO food_delivery.raw_rider_events AS
 SELECT

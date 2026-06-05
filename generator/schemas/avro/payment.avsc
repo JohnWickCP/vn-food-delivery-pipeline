@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "Payment",
+  "namespace": "vn.fooddelivery",
+  "fields": [
+    {"name": "payment_id",             "type": "string"},
+    {"name": "order_id",               "type": "string"},
+    {"name": "amount_vnd",             "type": "long"},
+    {"name": "method",                 "type": "string"},
+    {"name": "status",                 "type": "string"},
+    {"name": "gateway_transaction_id", "type": ["null", "string"], "default": null},
+    {"name": "processed_at",           "type": "string"},
+    {"name": "event_timestamp",        "type": "string"},
+    {"name": "producer_ts",            "type": "double"}
+  ]
+}

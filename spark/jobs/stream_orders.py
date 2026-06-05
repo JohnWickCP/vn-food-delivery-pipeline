@@ -1,14 +1,12 @@
 import logging
 import os
 import time
+import urllib.request
 
 from pyspark.sql import SparkSession
+from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
-    col, from_json, to_json, year, month, dayofmonth,
-)
-from pyspark.sql.types import (
-    ArrayType, IntegerType, LongType, StringType, StructField,
-    StructType, TimestampType,
+    col, expr, to_json, year, month, dayofmonth,
 )
 
 logger = logging.getLogger(__name__)
@@ -17,35 +15,18 @@ KAFKA_SERVERS   = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 MINIO_ENDPOINT  = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
 MINIO_ACCESS    = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET    = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+SR_URL          = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
 BUCKET          = "food-delivery-lake"
 OUTPUT_PATH     = f"s3a://{BUCKET}/raw/orders/"
 CHECKPOINT_PATH = f"s3a://{BUCKET}/checkpoints/orders/"
 
-ORDER_ITEM_SCHEMA = StructType([
-    StructField("item_id",   StringType(),  False),
-    StructField("name",      StringType(),  False),
-    StructField("price_vnd", LongType(),    False),
-    StructField("quantity",  IntegerType(), False),
-])
 
-ORDER_SCHEMA = StructType([
-    StructField("order_id",          StringType(),                False),
-    StructField("customer_id",       StringType(),                False),
-    StructField("restaurant_id",     StringType(),                False),
-    StructField("rider_id",          StringType(),                False),
-    StructField("city",              StringType(),                False),
-    StructField("district",          StringType(),                False),
-    StructField("status",            StringType(),                False),
-    StructField("items",             ArrayType(ORDER_ITEM_SCHEMA), False),
-    StructField("subtotal_vnd",      LongType(),                  False),
-    StructField("delivery_fee_vnd",  LongType(),                  False),
-    StructField("discount_vnd",      LongType(),                  False),
-    StructField("total_vnd",         LongType(),                  False),
-    StructField("payment_method",    StringType(),                False),
-    StructField("platform",          StringType(),                False),
-    StructField("placed_at",         TimestampType(),             False),
-    StructField("event_timestamp",   TimestampType(),             False),
-])
+def _fetch_latest_schema(subject: str) -> str:
+    url = f"{SR_URL}/subjects/{subject}/versions/latest"
+    with urllib.request.urlopen(url) as resp:
+        import json
+        data = json.loads(resp.read())
+        return data["schema"]
 
 
 def build_session() -> SparkSession:
@@ -66,6 +47,9 @@ def main() -> None:
     spark = build_session()
     spark.sparkContext.setLogLevel("WARN")
 
+    # Fetch Avro schema from Schema Registry (registered by generator on first produce)
+    schema_str = _fetch_latest_schema("raw.orders-value")
+
     raw = (
         spark.readStream
         .format("kafka")
@@ -74,16 +58,17 @@ def main() -> None:
         .option("startingOffsets", "earliest")
         .option("failOnDataLoss", "false")
         .load()
-        .select(from_json(col("value").cast("string"), ORDER_SCHEMA).alias("d"))
+        # Skip Confluent 5-byte magic header (1 magic byte + 4 schema-id bytes)
+        .select(from_avro(expr("substring(value, 6)"), schema_str).alias("d"))
         .select("d.*")
     )
 
     orders = (
         raw
+        .withColumn("event_timestamp", col("event_timestamp").cast("timestamp"))
+        .withColumn("placed_at",       col("placed_at").cast("timestamp"))
         .withWatermark("event_timestamp", "10 minutes")
         .dropDuplicates(["order_id", "event_timestamp"])
-        # Serialize items array back to JSON string to match ClickHouse raw_orders schema
-        .withColumn("items", to_json(col("items")))
         .withColumn("year",  year(col("event_timestamp")))
         .withColumn("month", month(col("event_timestamp")))
         .withColumn("day",   dayofmonth(col("event_timestamp")))

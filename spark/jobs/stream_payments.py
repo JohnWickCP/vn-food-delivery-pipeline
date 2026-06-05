@@ -1,29 +1,26 @@
 import os
+import urllib.request
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json, year, month, dayofmonth
-from pyspark.sql.types import (
-    LongType, StringType, StructField, StructType, TimestampType,
-)
+from pyspark.sql.avro.functions import from_avro
+from pyspark.sql.functions import col, expr, year, month, dayofmonth
 
 KAFKA_SERVERS   = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 MINIO_ENDPOINT  = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
 MINIO_ACCESS    = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET    = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+SR_URL          = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
 BUCKET          = "food-delivery-lake"
 OUTPUT_PATH     = f"s3a://{BUCKET}/raw/payments/"
 CHECKPOINT_PATH = f"s3a://{BUCKET}/checkpoints/payments/"
 
-PAYMENT_SCHEMA = StructType([
-    StructField("payment_id",             StringType(),    False),
-    StructField("order_id",               StringType(),    False),
-    StructField("amount_vnd",             LongType(),      False),
-    StructField("method",                 StringType(),    False),
-    StructField("status",                 StringType(),    False),
-    StructField("gateway_transaction_id", StringType(),    True),
-    StructField("processed_at",           TimestampType(), False),
-    StructField("event_timestamp",        TimestampType(), False),
-])
+
+def _fetch_latest_schema(subject: str) -> str:
+    url = f"{SR_URL}/subjects/{subject}/versions/latest"
+    with urllib.request.urlopen(url) as resp:
+        import json
+        data = json.loads(resp.read())
+        return data["schema"]
 
 
 def build_session() -> SparkSession:
@@ -44,6 +41,8 @@ def main() -> None:
     spark = build_session()
     spark.sparkContext.setLogLevel("WARN")
 
+    schema_str = _fetch_latest_schema("raw.payments-value")
+
     raw = (
         spark.readStream
         .format("kafka")
@@ -52,12 +51,14 @@ def main() -> None:
         .option("startingOffsets", "earliest")
         .option("failOnDataLoss", "false")
         .load()
-        .select(from_json(col("value").cast("string"), PAYMENT_SCHEMA).alias("d"))
+        .select(from_avro(expr("substring(value, 6)"), schema_str).alias("d"))
         .select("d.*")
     )
 
     payments = (
         raw
+        .withColumn("event_timestamp", col("event_timestamp").cast("timestamp"))
+        .withColumn("processed_at",    col("processed_at").cast("timestamp"))
         .withWatermark("event_timestamp", "10 minutes")
         .dropDuplicates(["payment_id", "event_timestamp"])
         .withColumn("year",  year(col("event_timestamp")))
