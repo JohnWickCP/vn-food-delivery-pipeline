@@ -1,4 +1,5 @@
 apache-airflow-providers-amazon>=8.0.0
+apache-airflow-providers-apache-spark>=4.1.0
 clickhouse-driver>=0.2.7
 confluent-kafka>=2.3.0
 dbt-core==1.7.19

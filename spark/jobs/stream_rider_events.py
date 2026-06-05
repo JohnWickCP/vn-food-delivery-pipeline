@@ -58,8 +58,6 @@ def main() -> None:
     events = (
         raw
         .withColumn("event_timestamp", col("event_timestamp").cast("timestamp"))
-        .withWatermark("event_timestamp", "10 minutes")
-        .dropDuplicates(["event_id", "event_timestamp"])
         .withColumn("year",  year(col("event_timestamp")))
         .withColumn("month", month(col("event_timestamp")))
         .withColumn("day",   dayofmonth(col("event_timestamp")))

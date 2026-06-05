@@ -977,7 +977,7 @@ docker compose down -v  # clean slate
 |---------|----------|----------|
 | Kafka | 9092 | 29092 |
 | Kafka UI | 8090 | - |
-| Schema Registry | 8082 | 8081 |
+| Schema Registry | 8085 | 8081 |
 | ClickHouse HTTP | 8123 | - |
 | ClickHouse native | 9900 | 9000 |
 | Spark master UI | 8081 | - |

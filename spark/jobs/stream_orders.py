@@ -1,12 +1,16 @@
+import io
+import json
 import logging
 import os
+import struct
 import time
 import urllib.request
 
+import fastavro
 from pyspark.sql import SparkSession
-from pyspark.sql.avro.functions import from_avro
-from pyspark.sql.functions import (
-    col, expr, to_json, year, month, dayofmonth,
+from pyspark.sql.functions import col, udf, year, month, dayofmonth
+from pyspark.sql.types import (
+    DoubleType, LongType, StringType, StructField, StructType, TimestampType,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,13 +24,32 @@ BUCKET          = "food-delivery-lake"
 OUTPUT_PATH     = f"s3a://{BUCKET}/raw/orders/"
 CHECKPOINT_PATH = f"s3a://{BUCKET}/checkpoints/orders/"
 
+OUTPUT_SCHEMA = StructType([
+    StructField("order_id",          StringType(),    False),
+    StructField("customer_id",       StringType(),    False),
+    StructField("restaurant_id",     StringType(),    False),
+    StructField("rider_id",          StringType(),    False),
+    StructField("city",              StringType(),    False),
+    StructField("district",          StringType(),    False),
+    StructField("status",            StringType(),    False),
+    StructField("items",             StringType(),    False),
+    StructField("subtotal_vnd",      LongType(),      False),
+    StructField("delivery_fee_vnd",  LongType(),      False),
+    StructField("discount_vnd",      LongType(),      False),
+    StructField("total_vnd",         LongType(),      False),
+    StructField("payment_method",    StringType(),    False),
+    StructField("platform",          StringType(),    False),
+    StructField("placed_at",         TimestampType(), False),
+    StructField("event_timestamp",   TimestampType(), False),
+    StructField("producer_ts",       DoubleType(),    False),
+])
 
-def _fetch_latest_schema(subject: str) -> str:
+
+def _fetch_avro_schema(subject: str) -> dict:
     url = f"{SR_URL}/subjects/{subject}/versions/latest"
     with urllib.request.urlopen(url) as resp:
-        import json
         data = json.loads(resp.read())
-        return data["schema"]
+        return json.loads(data["schema"])
 
 
 def build_session() -> SparkSession:
@@ -47,8 +70,43 @@ def main() -> None:
     spark = build_session()
     spark.sparkContext.setLogLevel("WARN")
 
-    # Fetch Avro schema from Schema Registry (registered by generator on first produce)
-    schema_str = _fetch_latest_schema("raw.orders-value")
+    avro_schema = _fetch_avro_schema("raw.orders-value")
+    parsed_schema = fastavro.parse_schema(avro_schema)
+
+    @udf(returnType=OUTPUT_SCHEMA)
+    def decode_avro(raw_bytes):
+        if raw_bytes is None:
+            return None
+        # Strip 5-byte Confluent magic header
+        buf = io.BytesIO(bytes(raw_bytes)[5:])
+        record = fastavro.schemaless_reader(buf, parsed_schema)
+        from datetime import datetime, timezone
+        def to_ts(s):
+            if not s:
+                return None
+            try:
+                return datetime.fromisoformat(s.replace("Z", "+00:00"))
+            except Exception:
+                return None
+        return (
+            str(record["order_id"]),
+            str(record["customer_id"]),
+            str(record["restaurant_id"]),
+            str(record["rider_id"]),
+            record["city"],
+            record["district"],
+            record["status"],
+            record["items"],
+            int(record["subtotal_vnd"]),
+            int(record["delivery_fee_vnd"]),
+            int(record["discount_vnd"]),
+            int(record["total_vnd"]),
+            record["payment_method"],
+            record["platform"],
+            to_ts(record["placed_at"]),
+            to_ts(record["event_timestamp"]),
+            float(record["producer_ts"]),
+        )
 
     raw = (
         spark.readStream
@@ -58,15 +116,12 @@ def main() -> None:
         .option("startingOffsets", "earliest")
         .option("failOnDataLoss", "false")
         .load()
-        # Skip Confluent 5-byte magic header (1 magic byte + 4 schema-id bytes)
-        .select(from_avro(expr("substring(value, 6)"), schema_str).alias("d"))
+        .select(decode_avro(col("value")).alias("d"))
         .select("d.*")
     )
 
     orders = (
         raw
-        .withColumn("event_timestamp", col("event_timestamp").cast("timestamp"))
-        .withColumn("placed_at",       col("placed_at").cast("timestamp"))
         .withWatermark("event_timestamp", "10 minutes")
         .dropDuplicates(["order_id", "event_timestamp"])
         .withColumn("year",  year(col("event_timestamp")))

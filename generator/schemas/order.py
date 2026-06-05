@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime, timezone
 from typing import List, Literal
@@ -35,4 +36,7 @@ class Order(BaseModel):
     producer_ts: float = Field(default_factory=time.time)
 
     def to_kafka_dict(self) -> dict:
-        return self.model_dump(mode="json")
+        d = self.model_dump(mode="json")
+        # Avro schema stores items as String (JSON array); ClickHouse expects String too
+        d["items"] = json.dumps(d["items"], ensure_ascii=False)
+        return d

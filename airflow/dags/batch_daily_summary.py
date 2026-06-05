@@ -2,13 +2,9 @@
 Lambda architecture — batch layer DAG.
 
 Flow:
-  1. Spark job (batch_daily_summary.py) runs at 1 AM via docker-compose:
-       docker compose --profile batch run --rm spark-batch-daily
-     In production this step uses KubernetesOperator / SparkSubmitOperator.
-
-  2. This DAG runs at 2 AM (after Spark finishes), performs two tasks:
-       check_spark_output  — verify Parquet landed in MinIO
-       load_to_clickhouse  — INSERT via ClickHouse s3() table function
+  1. SparkSubmitOperator submits batch_daily_summary.py to the Spark cluster.
+  2. check_spark_output verifies Parquet landed in MinIO.
+  3. load_to_clickhouse INSERTs via ClickHouse s3() table function.
 
 Why a separate batch layer?
   - Streaming dedup is watermark-bounded: late events beyond 10 min are dropped.
@@ -21,6 +17,7 @@ import logging
 from datetime import datetime, timedelta
 
 from airflow.decorators import dag, task
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +31,8 @@ _CH_PORT         = 9000   # native TCP inside Docker network
 
 @dag(
     dag_id="batch_daily_summary",
-    description="Batch layer: MinIO cold path → batch_daily_city_stats in ClickHouse",
-    schedule_interval="0 2 * * *",   # 2 AM daily — Spark job runs at 1 AM
+    description="Batch layer: Spark → MinIO → batch_daily_city_stats in ClickHouse",
+    schedule_interval="0 1 * * *",   # 1 AM daily — Spark runs first, then check + load
     start_date=datetime(2024, 1, 1),
     catchup=False,
     max_active_runs=1,
@@ -50,15 +47,29 @@ _CH_PORT         = 9000   # native TCP inside Docker network
 )
 def batch_daily_summary():
 
+    run_spark_batch = SparkSubmitOperator(
+        task_id="run_spark_batch",
+        application="/opt/spark/jobs/batch_daily_summary.py",
+        conn_id="spark_default",
+        application_args=["--date", "{{ ds }}"],
+        conf={
+            "spark.hadoop.fs.s3a.endpoint":            _MINIO_ENDPOINT,
+            "spark.hadoop.fs.s3a.access.key":          _MINIO_ACCESS,
+            "spark.hadoop.fs.s3a.secret.key":          _MINIO_SECRET,
+            "spark.hadoop.fs.s3a.path.style.access":   "true",
+            "spark.hadoop.fs.s3a.impl":                "org.apache.hadoop.fs.s3a.S3AFileSystem",
+            "spark.hadoop.fs.s3a.connection.ssl.enabled": "false",
+        },
+        total_executor_cores=2,
+        executor_memory="1G",
+    )
+
     @task
     def check_spark_output(**context) -> None:
-        """
-        Verify Spark wrote Parquet output for yesterday before loading.
-        Fails fast so the load step never runs against missing data.
-        """
+        """Verify Spark wrote Parquet output before loading."""
         import boto3
 
-        ds = context["ds"]   # YYYY-MM-DD, Airflow execution date (= yesterday)
+        ds = context["ds"]
         prefix = f"batch/daily_summary/date={ds}/"
 
         s3 = boto3.client(
@@ -69,33 +80,21 @@ def batch_daily_summary():
         )
         resp = s3.list_objects_v2(Bucket=_BUCKET, Prefix=prefix, MaxKeys=1)
         if resp.get("KeyCount", 0) == 0:
-            raise FileNotFoundError(
-                f"No Spark output at s3://{_BUCKET}/{prefix}\n"
-                "Trigger manually: docker compose --profile batch run --rm spark-batch-daily"
-            )
+            raise FileNotFoundError(f"No Spark output at s3://{_BUCKET}/{prefix}")
         logger.info("Spark output verified: s3://%s/%s", _BUCKET, prefix)
 
     @task
     def load_to_clickhouse(**context) -> None:
-        """
-        INSERT INTO batch_daily_city_stats using ClickHouse's built-in s3() function.
-        ClickHouse pulls the Parquet directly from MinIO — no file transfer through Airflow.
-
-        Idempotency: DELETE WHERE batch_date = ds before INSERT so re-runs are safe.
-        ReplacingMergeTree processed_at version also guards against duplicates at query time.
-        """
+        """INSERT INTO batch_daily_city_stats using ClickHouse s3() function."""
         from clickhouse_driver import Client
 
         ds = context["ds"]
         client = Client(host=_CH_HOST, port=_CH_PORT)
 
-        # Lightweight delete (ClickHouse 23.3+) clears the day before re-inserting
         client.execute(
             "DELETE FROM food_delivery.batch_daily_city_stats WHERE batch_date = %(d)s",
             {"d": ds},
         )
-        logger.info("Cleared existing rows for %s", ds)
-
         minio_glob = f"{_MINIO_ENDPOINT}/{_BUCKET}/batch/daily_summary/date={ds}/*.parquet"
         client.execute(f"""
             INSERT INTO food_delivery.batch_daily_city_stats
@@ -121,7 +120,7 @@ def batch_daily_summary():
         """)
         logger.info("Loaded batch_daily_city_stats for %s", ds)
 
-    check_spark_output() >> load_to_clickhouse()
+    run_spark_batch >> check_spark_output() >> load_to_clickhouse()
 
 
 dag = batch_daily_summary()

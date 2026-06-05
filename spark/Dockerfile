@@ -18,9 +18,9 @@ RUN curl -fsSL -o ${SPARK_JARS}/hadoop-aws-3.3.4.jar \
     && curl -fsSL -o ${SPARK_JARS}/kafka-clients-3.4.1.jar \
         https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.1/kafka-clients-3.4.1.jar \
     && curl -fsSL -o ${SPARK_JARS}/commons-pool2-2.11.1.jar \
-        https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar \
-    # Avro support for from_avro() / Confluent Schema Registry deserialization
-    && curl -fsSL -o ${SPARK_JARS}/spark-avro_2.12-3.5.0.jar \
-        https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.12/3.5.0/spark-avro_2.12-3.5.0.jar
+        https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar
+
+# Python packages for Avro deserialization via Python UDF
+RUN pip install --no-cache-dir fastavro==1.9.4
 
 USER spark

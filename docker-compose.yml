@@ -113,7 +113,7 @@ services:
       kafka-init:
         condition: service_completed_successfully
     ports:
-      - "8082:8081"   # Schema Registry API: http://localhost:8082
+      - "8085:8081"   # Schema Registry API: http://localhost:8085
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka:29092"
@@ -438,6 +438,7 @@ services:
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-supersecret}
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW_CONN_SPARK_DEFAULT: "spark://spark-master:7077"
       DBT_CLICKHOUSE_HOST: clickhouse
       DBT_CLICKHOUSE_PORT: "8123"
       DBT_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
@@ -446,6 +447,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
+      - ./spark/jobs:/opt/spark/jobs:ro
       - airflow-logs:/opt/airflow/logs
     networks:
       - food-delivery-net
@@ -478,6 +480,7 @@ services:
       DBT_CLICKHOUSE_PORT: "8123"
       DBT_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
       DBT_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      AIRFLOW_CONN_SPARK_DEFAULT: "spark://spark-master:7077"
       AIRFLOW__EMAIL__EMAIL_BACKEND: "airflow.utils.email.send_email_smtp"
       AIRFLOW__SMTP__SMTP_HOST: "smtp.gmail.com"
       AIRFLOW__SMTP__SMTP_STARTTLS: "True"
@@ -490,6 +493,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
+      - ./spark/jobs:/opt/spark/jobs:ro
       - airflow-logs:/opt/airflow/logs
     networks:
       - food-delivery-net
