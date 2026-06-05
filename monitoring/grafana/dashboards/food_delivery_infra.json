@@ -175,6 +175,35 @@
         "overrides": []
       },
       "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 99,
+      "title": "Data Freshness (seconds since last order)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT toUnixTimestamp(now()) - max(toUnixTimestamp(placed_at)) AS seconds_stale FROM food_delivery.raw_orders",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red",    "value": 300 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" }
     }
   ]
 }
