@@ -770,11 +770,16 @@ docker exec airflow-webserver airflow tasks states-for-dag-run `
 ```
 
 **Kết quả:**
-| Task | Status |
-|------|--------|
-| run_spark_batch | success/failed |
-| check_spark_output | success/failed |
-| load_to_clickhouse | success/failed |
+| Task | Status | Notes |
+|------|--------|-------|
+| run_spark_batch | up_for_retry (failed) | SparkSubmitOperator executed (0.67s), failed — no Parquet in MinIO (expected) |
+| check_spark_output | None | Correctly blocked by upstream failure |
+| load_to_clickhouse | None | Correctly blocked by upstream failure |
+
+DAG load: ✅ `batch_daily_summary` visible, operator=SparkSubmitOperator confirmed in scheduler log.
+Chain dependency: ✅ `run_spark_batch >> check_spark_output >> load_to_clickhouse` correct.
+
+**Install gotcha:** `apache-airflow-providers-apache-spark==4.1.0` pulls `common-compat==1.7.1` which requires Airflow 2.10+. Fix: install with `--no-deps` + skip `common-compat` entirely. SparkSubmitOperator works without it on Airflow 2.8.
 
 **Commits:**
 1. `feat(airflow): add SparkSubmitOperator to batch DAG for real dependency tracking`
