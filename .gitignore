@@ -44,6 +44,8 @@ Thumbs.db
 
 # Project-specific (không commit lên GitHub public)
 BENCHMARK_TASKS.md
+docs/BENCHMARK.md
+docs/cv_bullets.md
 PROJECT1_MASTER_PLAN.md
 PROJECT1_MASTER_PLAN_v2.md
 CLAUDE.md
