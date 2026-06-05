@@ -382,12 +382,13 @@ pip install clickhouse-driver
 python clickhouse/bench_concurrent.py
 ```
 
-**Kết quả:**
-| N concurrent | P50 (ms) | P95 (ms) | Max (ms) |
-|-------------|----------|----------|---------|
-| 1 | | | |
-| 5 | | | |
-| 10 | | | |
+**Kết quả:** (query: GROUP BY city+hour on 7-day window ~36k rows; N rounds × 3 each)
+| N concurrent | P50 (ms) | P95 (ms) | Max (ms) | Queries |
+|-------------|----------|----------|---------|---------|
+| 1 | 67 | 249 | 249 | 3 |
+| 5 | 82 | 292 | 292 | 15 |
+| 10 | 93 | 116 | 118 | 30 |
+| Note | P50 degrades 1.4× at N=10 vs N=1; all under 300ms | | | |
 
 **Commit:** `perf(clickhouse): concurrent query benchmark N=1,5,10`
 
