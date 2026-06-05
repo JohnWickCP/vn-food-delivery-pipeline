@@ -321,15 +321,15 @@ FROM (
 FORMAT PrettyCompact"
 ```
 
-**Kết quả (5 runs):**
+**Kết quả (5 runs):** (hot path: producer → Kafka → ClickHouse Kafka Engine; _ingested_at=DateTime 1s precision → min values can be negative due to rounding)
 | Run | P50 (s) | P95 (s) | Min (s) | Max (s) | Samples |
 |-----|---------|---------|---------|---------|---------|
-| 1 | | | | | |
-| 2 | | | | | |
-| 3 | | | | | |
-| 4 | | | | | |
-| 5 | | | | | |
-| **Final** | | | | | |
+| 1 | 3.24 | 6.54 | -0.50 | 7.03 | 500 |
+| 2 | 4.58 | 7.05 | -0.61 | 7.38 | 500 |
+| 3 | 3.78 | 6.81 | -0.23 | 7.23 | 500 |
+| 4 | 3.37 | 6.62 | -0.27 | 7.20 | 500 |
+| 5 | 2.99 | 6.10 | -0.92 | 6.60 | 500 |
+| **Final** | **3.59** | **6.62** | | | |
 
 **Commits:**
 1. `feat(generator): add producer_ts field for E2E latency measurement`
@@ -444,12 +444,12 @@ docker exec clickhouse clickhouse-client --port 9000 `
 **Kết quả:**
 | Metric | Giá trị |
 |--------|---------|
-| Kill time | |
-| Restart time | |
-| Spark recovery time | s |
-| ClickHouse recovery time | s |
-| Messages lost (RF=1 expected) | |
-| Checkpoint honored? | Y/N |
+| Kill time | 04:11:15 UTC (docker stop, graceful SIGTERM) |
+| Restart time | 04:11:25 UTC (10s total downtime) |
+| Spark recovery time | ~40s (resumed at 04:12:05; caught 5,592-row backlog in single batch) |
+| ClickHouse recovery time | ~40s (Kafka Engine re-connected on Kafka restart) |
+| Messages lost (RF=1 expected) | 0 observed (SIGTERM → graceful shutdown; in-flight committed) |
+| Checkpoint honored? | Y (Spark resumed from checkpoint, batch epoch continued from last position) |
 
 **Expected finding:** RF=1 → một số messages in-flight bị mất khi broker kill; Spark resume từ checkpoint khi broker lên lại.
 
@@ -819,12 +819,12 @@ docker exec airflow-webserver bash -c "
     --select fct_orders 2>&1 | tail -5"
 ```
 
-**Kết quả:**
-| Mode | Time | Rows processed |
-|------|------|----------------|
-| Full refresh | s | |
-| Incremental | s | |
-| Speedup | | × faster |
+**Kết quả:** (77,692 total rows in fct_orders)
+| Mode | dbt internal | wall time | Notes |
+|------|--------------|-----------|-------|
+| Full refresh (10 models) | 2.87s | 11.93s | First run, all 10 models |
+| Incremental (fct_orders only) | 1.25s | 9.27s | Only last 10min window |
+| Speedup | 2.3× (internal) | 1.3× (wall) | Wall dominated by Python startup |
 
 **Commit:** `feat(dbt): incremental materialization for fct_orders with 10min late-event lookback`
 

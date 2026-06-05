@@ -1,7 +1,10 @@
 {{ config(
-    materialized='table',
-    engine='MergeTree()',
-    order_by='(city, placed_date, order_id)'
+    materialized='incremental',
+    engine='ReplacingMergeTree()',
+    order_by='(city, placed_date, order_id)',
+    unique_key='order_id',
+    incremental_strategy='delete+insert',
+    on_schema_change='append_new_columns'
 ) }}
 
 SELECT
@@ -29,3 +32,9 @@ SELECT
     toUInt8(op.order_status = 'delivered')                      AS is_delivered,
     toUInt8(op.payment_status = 'success')                      AS is_paid
 FROM {{ ref('int_order_payments') }} op
+
+{% if is_incremental() %}
+WHERE op.placed_at_local >= (
+    SELECT max(placed_at_local) FROM {{ this }}
+) - toIntervalMinute(10)
+{% endif %}
