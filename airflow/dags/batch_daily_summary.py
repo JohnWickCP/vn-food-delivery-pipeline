@@ -42,6 +42,9 @@ _CH_PORT         = 9000   # native TCP inside Docker network
     default_args={
         "retries": 1,
         "retry_delay": timedelta(minutes=5),
+        "email_on_failure": True,
+        "email_on_retry": False,
+        "email": ["caophon9ats2018@gmail.com"],
     },
     tags=["batch", "lambda", "spark", "clickhouse"],
 )

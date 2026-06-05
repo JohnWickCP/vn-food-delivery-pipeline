@@ -116,7 +116,13 @@ def _get_consumer_lag(group_ids: list[str], high_watermarks: dict[str, int]) -> 
     start_date=datetime(2024, 1, 1),
     catchup=False,
     max_active_runs=1,
-    default_args={"retries": 1, "retry_delay": timedelta(minutes=1)},
+    default_args={
+        "retries": 1,
+        "retry_delay": timedelta(minutes=1),
+        "email_on_failure": True,
+        "email_on_retry": False,
+        "email": ["caophon9ats2018@gmail.com"],
+    },
     tags=["pipeline", "monitor"],
 )
 def monitor_kafka_lag():

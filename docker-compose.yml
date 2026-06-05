@@ -443,6 +443,14 @@ services:
       DBT_CLICKHOUSE_PORT: "8123"
       DBT_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
       DBT_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      AIRFLOW__EMAIL__EMAIL_BACKEND: "airflow.utils.email.send_email_smtp"
+      AIRFLOW__SMTP__SMTP_HOST: "smtp.gmail.com"
+      AIRFLOW__SMTP__SMTP_STARTTLS: "True"
+      AIRFLOW__SMTP__SMTP_SSL: "False"
+      AIRFLOW__SMTP__SMTP_PORT: "587"
+      AIRFLOW__SMTP__SMTP_USER: "${SMTP_USER:-}"
+      AIRFLOW__SMTP__SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      AIRFLOW__SMTP__SMTP_MAIL_FROM: "${SMTP_USER:-airflow@localhost}"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins

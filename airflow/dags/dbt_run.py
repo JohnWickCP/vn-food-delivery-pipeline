@@ -16,6 +16,9 @@ default_args = {
     "owner": "airflow",
     "retries": 1,
     "retry_delay": timedelta(minutes=3),
+    "email_on_failure": True,
+    "email_on_retry": False,
+    "email": ["caophon9ats2018@gmail.com"],
 }
 
 with DAG(
