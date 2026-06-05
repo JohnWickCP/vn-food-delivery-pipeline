@@ -66,6 +66,22 @@ Measured on `raw_orders` (261k rows, ReplacingMergeTree, no warm cache) — prio
 
 > Prior perf test with 5.03M rows: Q1=29ms, Q2=103ms, Q3=88ms — 2/3 under target, Q2 borderline at scale.
 
+### 3a. FINAL vs non-FINAL overhead benchmark (2026-06-05)
+
+Dataset: **489,933 rows** in `raw_orders` (ReplacingMergeTree, un-merged duplicates present).
+
+Query: `SELECT city, count() FROM food_delivery.raw_orders [FINAL] GROUP BY city`
+
+| Variant | Run 1 (cold) | Run 2 (warm) | Notes |
+|---------|-------------|-------------|-------|
+| Without FINAL | 42 ms | 22 ms | Reads raw parts, may count duplicates |
+| With FINAL | 359 ms | 152 ms | Forces merge-on-read dedup |
+| **Overhead** | **8.5×** | **6.9×** | FINAL forces single-threaded part merge |
+
+**Both queries return identical row counts** (163,009 / 163,541 / 163,080 per city) — confirms no significant duplicate volume in current dataset.
+
+> **FINAL trade-off:** Use FINAL only in batch/dbt queries where exact dedup matters. Hot-path Grafana dashboards skip FINAL for speed; ReplacingMergeTree handles eventual dedup during background merges. dbt `fct_orders` uses `FINAL` explicitly in the staging SELECT to guarantee dedup before mart aggregation.
+
 ---
 
 ## 4. dbt Test Coverage

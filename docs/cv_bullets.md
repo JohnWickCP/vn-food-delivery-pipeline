@@ -24,6 +24,7 @@ Source column references the task that produced the number.
 
 - Configured ClickHouse **ReplacingMergeTree** with Kafka Engine (3-object pattern: queue table + MV + storage) for sub-10s real-time ingestion; zero-downtime dedup on merge
 - Benchmarked **concurrent query performance**: P50=67ms at N=1, P50=93ms at N=10 concurrent analytical queries (GROUP BY city+hour, 7-day window, ~36k rows, with ORDER BY) — 1.4× degradation at 10× load; separate measurement on 261k rows without ORDER BY yields 19ms (warm parts, no sort overhead)
+- Measured **FINAL vs non-FINAL dedup overhead** on 490k-row ReplacingMergeTree: 22ms without FINAL vs 152ms with FINAL (warm cache, ~7× overhead); dbt marts use FINAL for exact dedup, hot-path Grafana skips FINAL for speed — explicit trade-off documented
 - Achieved **2.4× LZ4 compression** on raw_orders (MiB→MiB), **1.9× on rider events** — validated via `system.parts`
 - Optimized ClickHouse schema: `LowCardinality(String)` for enum fields, `Float64` for sub-second timestamps, `parseDateTime64BestEffort` for ISO 8601 ingestion
 
@@ -59,6 +60,7 @@ Source column references the task that produced the number.
 | ClickHouse query P50 (N=1) | 67ms | P3-T07 |
 | ClickHouse query P50 (N=10) | 93ms | P3-T07 |
 | ClickHouse query P95 (N=10) | 116ms | P3-T07 |
+| FINAL overhead (490k rows, warm) | 22ms → 152ms (~7×) | P5-T11 |
 | LZ4 compression raw_orders | 2.4× | P1-T01 |
 | dbt run (10 models, internal) | 1.96s | P1-T03 |
 | dbt test (55 tests, internal) | 3.56s | P1-T03 |
