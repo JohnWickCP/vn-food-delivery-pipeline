@@ -144,9 +144,9 @@ All 7 targets UP:
 | node | 9100 | node-exporter (host CPU/RAM/disk) |
 | kafka | 9308 | kafka-exporter (lag, offsets) |
 | clickhouse | 9116 | clickhouse-exporter (query/insert metrics) |
-| spark (orders) | 4040 | Spark driver PrometheusServlet |
-| spark (payments) | 4041 | Spark driver PrometheusServlet |
-| spark (riders) | 4042 | Spark driver PrometheusServlet |
+| spark (orders) | 4040 | Spark driver PrometheusServlet (spark-streaming-orders:4040) |
+| spark (payments) | 4040 | Spark driver PrometheusServlet (spark-streaming-payments:4040) |
+| spark (riders) | 4040 | Spark driver PrometheusServlet (spark-streaming-rider-events:4040) |
 
 ---
 

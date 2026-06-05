@@ -67,7 +67,7 @@ RIDER_GPS_INTERVAL_SEC=30
 
 ## 2. Kiểm tra Port Conflicts (bắt buộc trước khi start)
 
-Project dùng 11 ports. Nếu bất kỳ port nào đang bị chiếm, `docker compose up` sẽ fail với lỗi `Bind: address already in use`.
+Project dùng 12 ports. Nếu bất kỳ port nào đang bị chiếm, `docker compose up` sẽ fail với lỗi `Bind: address already in use`.
 
 ### Danh sách ports và ứng dụng hay xung đột
 
@@ -79,6 +79,7 @@ Project dùng 11 ports. Nếu bất kỳ port nào đang bị chiếm, `docker c
 | 9001 | MinIO Console | Local MinIO |
 | 8080 | Airflow UI | **Spring Boot**, **Tomcat**, XAMPP, Jenkins, local dev server |
 | 8081 | Spark Master UI | **Tomcat**, local dev server |
+| 8085 | Schema Registry API | Ít gặp |
 | 8090 | Kafka UI | Ít gặp |
 | 8123 | ClickHouse HTTP | Local ClickHouse (non-Docker) |
 | 9900 | ClickHouse Native TCP | Ít gặp |
@@ -89,12 +90,12 @@ Project dùng 11 ports. Nếu bất kỳ port nào đang bị chiếm, `docker c
 
 **Windows (PowerShell):**
 ```powershell
-netstat -ano | findstr " 2181 9092 9000 9001 8080 8081 8090 8123 9900 3000 9090" | findstr "LISTENING"
+netstat -ano | findstr " 2181 9092 9000 9001 8080 8081 8085 8090 8123 9900 3000 9090" | findstr "LISTENING"
 ```
 
 **macOS / Linux:**
 ```bash
-lsof -i :2181,9092,9000,9001,8080,8081,8090,8123,9900,3000,9090 | grep LISTEN
+lsof -i :2181,9092,9000,9001,8080,8081,8085,8090,8123,9900,3000,9090 | grep LISTEN
 ```
 
 Nếu output trống → tất cả ports free, tiếp tục Bước 3.  
@@ -169,6 +170,7 @@ NAME                           STATUS
 zookeeper                      Up (healthy)
 kafka                          Up (healthy)
 kafka-init                     Exited (0)       ← one-shot, exit 0 = success
+schema-registry                Up (healthy)
 minio                          Up (healthy)
 minio-init                     Exited (0)       ← one-shot
 spark-master                   Up (healthy)

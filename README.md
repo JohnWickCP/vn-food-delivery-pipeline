@@ -90,7 +90,7 @@ A production-style data engineering portfolio project simulating a food delivery
 │    ▼           │  │  s3a://food-delivery-lake/raw/{topic}/          │
 │  raw tables   │  │  partitioned year / month / day / hour          │
 │  (Replacing   │  │              │                                    │
-│  MergeTree)   │  │  Airflow @daily 2 AM                             │
+│  MergeTree)   │  │  Airflow @daily 1 AM                             │
 │               │  │  └─ Spark batch: exact dedup per day            │
 │  Latency: s   │  │     INSERT → ClickHouse via s3() function        │
 │               │  │  Latency: ~24 h (next morning)                   │
@@ -114,7 +114,7 @@ A production-style data engineering portfolio project simulating a food delivery
 │  Apache Airflow 2.8                                                   │
 │  ├─ dbt_run             hourly at HH:05                              │
 │  ├─ monitor_kafka_lag   every 5 min, alert on lag / silence          │
-│  └─ batch_daily_summary @daily 2 AM                                  │
+│  └─ batch_daily_summary @daily 1 AM                                  │
 └──────────────────────────────────────────────────────────────────────┘
                     │
                     ▼
@@ -211,39 +211,53 @@ make purge         # full reset: delete ALL volumes (ClickHouse, Kafka, Airflow 
 ```
 vn-food-delivery-pipeline/
 ├── generator/                # Async Kafka producers (orders, payments, riders)
-│   ├── producers/            # OrderProducer, PaymentProducer, RiderProducer
+│   ├── producers/            # base_producer, OrderProducer, PaymentProducer, RiderProducer
 │   ├── schemas/              # Pydantic v2 models (Order, Payment, RiderEvent)
+│   │   └── avro/             # Avro schemas (.avsc) for Schema Registry
 │   ├── config.py             # Shared RIDER_POOL + Kafka config
 │   └── main.py               # asyncio.gather entry point
 ├── spark/
 │   ├── Dockerfile            # PySpark 3.5 + Kafka + S3A jars
 │   ├── jobs/                 # stream_orders, stream_payments, stream_rider_events
-│   │                         # batch_daily_summary (reads MinIO → aggregates → MinIO)
+│   │                         # batch_daily_summary (reads MinIO → aggregates → ClickHouse)
 │   └── conf/spark-defaults.conf
 ├── clickhouse/
-│   └── init/                 # 01_create_database, 02_raw_tables (ReplacingMergeTree),
-│                             # 03_views, 04_kafka_engine (Kafka Engine + MVs)
-│                             # 05_batch_tables (batch_daily_city_stats)
+│   ├── init/                 # 01_create_database, 02_raw_tables (ReplacingMergeTree),
+│   │                         # 03_views, 04_kafka_engine (Kafka Engine + MVs)
+│   │                         # 05_batch_tables (batch_daily_city_stats)
+│   ├── bench_concurrent.py   # Concurrent query benchmark script
+│   └── perf_test.sql         # Performance test queries
 ├── airflow/
-│   ├── Dockerfile            # python3.9, dbt-core==1.7.19, dbt-clickhouse==1.7.7
+│   ├── Dockerfile            # apache/airflow:2.8.0-python3.9 + dbt-core 1.7.19
+│   ├── requirements.txt      # dbt-clickhouse, confluent-kafka, spark provider
 │   └── dags/                 # dbt_run.py, monitor_kafka_lag.py, batch_daily_summary.py
 ├── dbt/
 │   ├── models/
 │   │   ├── staging/          # stg_orders, stg_payments, stg_riders, stg_order_items
 │   │   ├── intermediate/     # int_order_payments (LEFT JOIN), int_delivery_metrics
 │   │   └── marts/            # fct_orders, dim_restaurant, dim_rider, rpt_hourly_revenue
-│   └── profiles.yml          # ClickHouse HTTP connection via env vars
+│   ├── tests/                # assert_valid_order_status, assert_positive_revenue,
+│   │                         # assert_payment_not_exceeds_order (singular tests)
+│   ├── profiles.yml          # ClickHouse HTTP connection via env vars
+│   └── profiles.yml.example  # Template for onboarding
 ├── monitoring/
 │   ├── prometheus/prometheus.yml   # 7 scrape targets
-│   └── grafana/provisioning/       # datasources + dashboard JSON
+│   └── grafana/provisioning/       # datasources (ClickHouse, Prometheus) + dashboard JSON
 ├── minio/init_buckets.sh     # Creates food-delivery-lake bucket
 ├── scripts/measure_metrics.sh
+├── screenshots/              # Architecture screenshots for portfolio
 ├── docs/
 │   ├── IMPLEMENTATION_NOTES.md     # Architecture decisions + per-phase gotchas
-│   └── metrics_results.md          # Measured CV metrics
+│   ├── metrics_results.md          # Measured CV metrics (benchmarked 2026-06-05)
+│   ├── ARCHITECTURE_GUIDE.md       # Deep-dive architecture + interview prep links
+│   ├── INTERVIEW_PREP.md           # Q&A bank for DE interviews
+│   ├── STUDY_GUIDE.md              # Learning path + reading order
+│   ├── BENCHMARK.md                # Benchmark methodology + results
+│   └── DOCKER_CLEANUP.md           # Docker volume / WSL2 disk management
 ├── docker-compose.yml
 ├── docker-compose.monitoring.yml
 ├── Makefile
+├── SETUP.md                  # Full setup guide with troubleshooting
 └── .env.example
 ```
 
@@ -267,7 +281,7 @@ dim_rider      ──┤──► fct_orders ──► rpt_hourly_revenue
 
 | | ClickHouse Kafka Engine (hot) | Spark → MinIO → ClickHouse (batch) |
 |-|-------------------------------|-------------------------------------|
-| Latency | seconds | ~24h (runs next day at 2 AM) |
+| Latency | seconds | ~24h (runs next day at 1 AM) |
 | Role | real-time Grafana dashboards | exact daily stats + historical reprocessing |
 | Dedup | ReplacingMergeTree (lazy) + FINAL | full-day `dropDuplicates(["order_id"])` — no watermark approximation |
 | Reprocessing | not possible (Kafka retention 24h) | re-run any date: `docker compose --profile batch run --rm spark-batch-daily --date YYYY-MM-DD` |
@@ -286,6 +300,6 @@ MinIO S3 API already uses `9000`. Both services in the same Docker network would
 3. **Schema Registry present but not on critical path** — `cp-schema-registry:7.5.0` is in the stack. Spark streaming jobs use a fastavro UDF instead of `from_avro()` (eliminated a `ClassCastException` with Confluent's deserializer). Schema Registry is available for future Avro enforcement.
 4. **ClickHouse dedup is lazy** — Duplicates visible between background merges. Mitigated by `FINAL` keyword on all staging views and dbt models.
 5. **Airflow LocalExecutor** — production uses CeleryExecutor or KubernetesExecutor. Sufficient for single-machine demo.
-6. **Hardcoded credentials in batch DAG** — `airflow/dags/batch_daily_summary.py` hardcodes MinIO/ClickHouse host+credentials. Production: use Airflow Connections (Admin → Connections UI) and retrieve via `BaseHook.get_connection()`.
-7. **Spark batch not wired via SparkSubmitOperator** — Streaming jobs run as `restart: unless-stopped` Docker services. Batch job runs via `docker compose --profile batch run`. Airflow DAG assumes Spark finished by 2 AM; no actual SparkSubmitOperator. Production: use `SparkSubmitOperator` or `KubernetesPodOperator`.
+6. **Credentials in batch DAG via env vars** — `airflow/dags/batch_daily_summary.py` reads MinIO/ClickHouse credentials from environment variables (`os.getenv()`). Production: use Airflow Connections (Admin → Connections UI) and retrieve via `BaseHook.get_connection()` to avoid credentials in environment.
+7. **Spark batch wired via SparkSubmitOperator** — Airflow DAG uses `SparkSubmitOperator` to submit the batch job and waits for completion. Streaming jobs run as `restart: unless-stopped` Docker services. The batch profile (`--profile batch`) can also be triggered manually: `docker compose --profile batch run --rm spark-batch-daily --date YYYY-MM-DD`.
 8. **Non-atomic batch load** — `batch_daily_summary` DAG does DELETE then INSERT as separate statements. If INSERT fails mid-way, the day's data is gone until rerun. Production: use ReplacingMergeTree version column (insert new version, rely on FINAL for dedup) instead of DELETE+INSERT.
