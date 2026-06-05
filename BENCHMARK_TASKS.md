@@ -83,14 +83,14 @@ ORDER BY ratio DESC
 FORMAT PrettyCompact"
 ```
 
-**Kết quả:**
+**Kết quả:** (measured at ~8k rows, after OPTIMIZE FINAL; from system.parts)
 | Table | Compressed | Uncompressed | Ratio |
 |-------|-----------|--------------|-------|
-| raw_orders | | | |
-| raw_payments | | | |
-| raw_rider_events | | | |
-| fct_orders | | | |
-| (others) | | | |
+| raw_orders | 1.01 MiB | 2.40 MiB | 2.4× |
+| raw_payments | 310.83 KiB | 388.31 KiB | 1.2× |
+| raw_rider_events | 86.71 KiB | 163.51 KiB | 1.9× |
+| fct_orders | N/A (view) | N/A | N/A |
+| Note | raw_orders 2.4× consistent with earlier 261k-row measurement | | |
 
 **Commit:** `perf(clickhouse): document MergeTree LZ4 compression ratios`
 
@@ -119,13 +119,13 @@ FORMAT PrettyCompact"
 
 Chạy 3 lần cách nhau 1 phút, lấy average rows_per_sec.
 
-**Kết quả:**
-| Run | orders/min | payments/min | total rows/sec |
-|-----|-----------|-------------|----------------|
-| 1 | | | |
-| 2 | | | |
-| 3 | | | |
-| **Average** | | | |
+**Kết quả:** (measured by table count delta over 3 × 1-min intervals; T0: orders=7574, payments=7567, riders=2800)
+| Run | orders/min | payments/min | riders/min | total rows/sec (all 3 tables) |
+|-----|-----------|-------------|------------|-------------------------------|
+| 1 | 1,350 | 1,348 | 400 | 52.3 |
+| 2 | 1,191 | 1,190 | 400 | 46.4 |
+| 3 | 1,192 | 1,191 | 400 | 46.4 |
+| **Average** | **1,244** | **1,243** | **400** | **48.4** |
 
 **Commit:** `perf(clickhouse): measure Kafka Engine insert rate rows/sec`
 
@@ -146,13 +146,13 @@ docker exec airflow-webserver bash -c "
 "
 ```
 
-**Kết quả:**
-| Step | Time |
-|------|------|
-| dbt deps | |
-| dbt run (10 models) | |
-| dbt test (55 tests) | |
-| **Total** | |
+**Kết quả:** (dbt internal = ClickHouse query time only; real = Python startup + compilation + execution)
+| Step | dbt internal time | real wall time |
+|------|-------------------|----------------|
+| dbt deps | — (already installed) | 9.89s |
+| dbt run (10 models) | 1.96s | 9.70s |
+| dbt test (55 tests) | 3.56s | 10.68s |
+| **Total (run+test)** | **5.52s** | **~20.4s** |
 
 **Commit:** `docs(dbt): add full pipeline run timing`
 
@@ -180,12 +180,13 @@ $appId3 = $apps3[0].id
 Invoke-RestMethod "http://localhost:4042/api/v1/applications/$appId3/streaming/statistics" | ConvertTo-Json
 ```
 
-**Kết quả:**
-| Job | avgInputRate (rows/s) | avgProcessingRate (rows/s) | batchDuration (ms) |
-|-----|-----------------------|---------------------------|--------------------|
-| stream-orders | | | |
-| stream-payments | | | |
-| stream-rider-events | | | |
+**Kết quả:** (from Spark logs — no port mapping, queried from inside container; /streaming/statistics endpoint N/A for Structured Streaming)
+| Job | avg batchDuration (ms) | min (ms) | max (ms) | batches observed |
+|-----|------------------------|----------|----------|-----------------|
+| stream-orders | 11,855 | 8,097 | 43,588 | 37 |
+| stream-payments | 11,525 | 7,952 | 43,195 | 39 |
+| stream-rider-events | 12,322 | 7,915 | 42,678 | 28 |
+| **Note** | avg rows/batch orders ≈ 200-1,300 (variable); min batch seen 0 rows (no new msgs) | | | |
 
 **Commit:** `docs(spark): document micro-batch throughput and batch duration`
 
@@ -222,16 +223,16 @@ FORMAT PrettyCompact"
 
 Nếu query phức tạp trên không chạy được, dùng cách đơn giản: chạy 2 query riêng và note thời gian thủ công.
 
-**Kết quả:**
+**Kết quả:** (at ~8k rows, after OPTIMIZE FINAL merged all parts)
 | Metric | Giá trị |
 |--------|---------|
-| Total raw rows | |
-| Unique orders | |
-| Duplicates | |
-| Dup % | |
-| Query time WITHOUT FINAL | ms |
-| Query time WITH FINAL | ms |
-| FINAL overhead | × slower |
+| Total raw rows | 7,880 |
+| Unique orders | 7,880 |
+| Duplicates | 0 |
+| Dup % | 0% (post-merge; ReplacingMergeTree dedup is lazy) |
+| Query time WITHOUT FINAL | 6ms |
+| Query time WITH FINAL | 9ms |
+| FINAL overhead | 1.5× (negligible at 8k rows; grows with data size) |
 
 **Commit:** `docs(metrics): add deduplication efficiency and FINAL overhead stats`
 
