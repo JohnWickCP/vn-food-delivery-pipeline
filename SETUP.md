@@ -65,7 +65,79 @@ RIDER_GPS_INTERVAL_SEC=30
 
 ---
 
-## 2. Start Core Stack
+## 2. Kiểm tra Port Conflicts (bắt buộc trước khi start)
+
+Project dùng 11 ports. Nếu bất kỳ port nào đang bị chiếm, `docker compose up` sẽ fail với lỗi `Bind: address already in use`.
+
+### Danh sách ports và ứng dụng hay xung đột
+
+| Port | Service trong project | Ứng dụng hay chiếm |
+|------|-----------------------|---------------------|
+| 2181 | Zookeeper | Local Zookeeper (non-Docker) |
+| 9092 | Kafka (external) | Local Kafka (non-Docker) |
+| 9000 | MinIO S3 API | SonarQube, local MinIO, Hadoop NameNode |
+| 9001 | MinIO Console | Local MinIO |
+| 8080 | Airflow UI | **Spring Boot**, **Tomcat**, XAMPP, Jenkins, local dev server |
+| 8081 | Spark Master UI | **Tomcat**, local dev server |
+| 8090 | Kafka UI | Ít gặp |
+| 8123 | ClickHouse HTTP | Local ClickHouse (non-Docker) |
+| 9900 | ClickHouse Native TCP | Ít gặp |
+| 3000 | Grafana | **React/Next.js** `npm run dev`, Node.js apps |
+| 9090 | Prometheus | Local Prometheus (non-Docker) |
+
+### Kiểm tra nhanh
+
+**Windows (PowerShell):**
+```powershell
+netstat -ano | findstr " 2181 9092 9000 9001 8080 8081 8090 8123 9900 3000 9090" | findstr "LISTENING"
+```
+
+**macOS / Linux:**
+```bash
+lsof -i :2181,9092,9000,9001,8080,8081,8090,8123,9900,3000,9090 | grep LISTEN
+```
+
+Nếu output trống → tất cả ports free, tiếp tục Bước 3.  
+Nếu có dòng xuất hiện → port đó đang bị chiếm, xem hướng dẫn bên dưới.
+
+### Xử lý khi port bị chiếm
+
+**Tắt ứng dụng trước khi chạy:**
+
+| Nếu bạn đang chạy | Cách tắt |
+|--------------------|----------|
+| Spring Boot app | Dừng trong IDE hoặc `Ctrl+C` trong terminal |
+| `npm run dev` / `npm start` | `Ctrl+C` trong terminal |
+| XAMPP | XAMPP Control Panel → Stop Apache |
+| Tomcat | XAMPP Control Panel → Stop Tomcat, hoặc tắt service |
+| SonarQube | `<sonarqube_dir>/bin/sonar.sh stop` |
+| Local Kafka/Zookeeper | Dừng service hoặc `kill` process |
+| Local ClickHouse | `sudo service clickhouse-server stop` |
+
+**Nếu không biết process nào đang chiếm (Windows PowerShell):**
+```powershell
+# Tìm PID đang dùng port 8080 (thay 8080 bằng port cần kiểm tra)
+netstat -ano | findstr ":8080 " | findstr "LISTENING"
+# Kết quả ví dụ: TCP  0.0.0.0:8080  LISTENING  12345  ← 12345 là PID
+
+# Xem tên process
+Get-Process -Id 12345
+
+# Tắt process (nếu an toàn)
+Stop-Process -Id 12345
+```
+
+**macOS / Linux:**
+```bash
+# Tìm và tắt process chiếm port 8080
+lsof -ti :8080 | xargs kill -9
+```
+
+> Không nên đổi port trong `docker-compose.yml` vì các services phụ thuộc vào nhau qua port nội bộ — tắt ứng dụng xung đột là cách an toàn nhất.
+
+---
+
+## 3. Start Core Stack
 
 ```bash
 make up
@@ -114,11 +186,11 @@ generator                      Up
 kafka-ui                       Up
 ```
 
-> Nếu một service ở `Restarting` hoặc `Exit non-zero` → xem [Troubleshooting](#6-troubleshooting).
+> Nếu một service ở `Restarting` hoặc `Exit non-zero` → xem [Troubleshooting](#7-troubleshooting).
 
 ---
 
-## 3. Start Monitoring Stack
+## 4. Start Monitoring Stack
 
 ```bash
 make up-mon
@@ -134,7 +206,7 @@ Expected: prometheus, grafana, và 3 exporters đều `Up`.
 
 ---
 
-## 4. Verify Pipeline is Working
+## 5. Verify Pipeline is Working
 
 ### Service URLs
 
@@ -190,7 +262,7 @@ In ra: data volume, ingestion rate, ClickHouse query latency, dbt test results, 
 
 ---
 
-## 5. Run dbt Manually
+## 6. Run dbt Manually
 
 ```bash
 # Run all models
@@ -214,7 +286,7 @@ docker exec airflow-scheduler dbt run \
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 ### ClickHouse không có data sau khi start
 
@@ -286,29 +358,18 @@ docker exec airflow-scheduler dbt deps \
 
 ### Port conflict (address already in use)
 
-Kiểm tra ports đang dùng:
-```bash
-# Windows
-netstat -ano | findstr "9092\|8080\|8123\|3000\|9090"
+Xem [Bước 2 — Kiểm tra Port Conflicts](#2-kiểm-tra-port-conflicts-bắt-buộc-trước-khi-start) để biết danh sách đầy đủ ports, ứng dụng hay xung đột và cách xử lý.
 
-# macOS/Linux
-lsof -i :9092,8080,8123,3000,9090
+Lệnh kiểm tra nhanh nếu `make up` vừa fail:
+```powershell
+# Windows — tìm port bị chiếm (ví dụ 8080)
+netstat -ano | findstr ":8080 " | findstr "LISTENING"
+Get-Process -Id <PID_từ_kết_quả_trên>
 ```
-
-Port assignments trong project:
-
-| Port | Service |
-|------|---------|
-| 9092 | Kafka (external) |
-| 9000 | MinIO S3 API |
-| 9001 | MinIO Console |
-| 8080 | Airflow UI |
-| 8081 | Spark Master UI |
-| 8090 | Kafka UI |
-| 8123 | ClickHouse HTTP |
-| 9900 | ClickHouse Native TCP |
-| 3000 | Grafana |
-| 9090 | Prometheus |
+```bash
+# macOS/Linux
+lsof -ti :8080 | xargs kill -9
+```
 
 ### Prometheus targets không up
 
@@ -328,7 +389,7 @@ MSYS_NO_PATHCONV=1 docker exec clickhouse clickhouse-client ...
 
 ---
 
-## 7. Stop & Disk Management
+## 8. Stop & Disk Management
 
 ### Khi nào cần dừng?
 
@@ -412,7 +473,7 @@ Kết quả thực tế: 17–61 GB → 1–3.5 GB sau compact.
 
 ---
 
-## 8. Resource Requirements
+## 9. Resource Requirements
 
 | Component | RAM | CPU |
 |-----------|-----|-----|
