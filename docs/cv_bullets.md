@@ -16,14 +16,14 @@ Source column references the task that produced the number.
 ### Data Engineering / Real-Time Systems
 
 - Designed and implemented a **real-time event streaming pipeline** (GrabFood/ShopeeFood scale) using Kafka 3.6, PySpark 3.5 Structured Streaming, ClickHouse 24.x, and Airflow 2.8 on Docker Compose
-- Achieved **1,244 orders/min** sustained ingestion rate on single-node Docker; architecture scales horizontally via Kafka partitions and Spark workers to 5,000+/min theoretical peak
+- Achieved **1,244 orders/min** sustained ingestion rate on single-node Docker (benchmarked via 3 × 1-min count delta); generator configured to 5,000/min peak — pipeline throughput at that load not yet benchmarked
 - Measured **end-to-end hot-path latency P50=3.59s, P95=6.62s** (producer→Kafka→ClickHouse Kafka Engine→ReplacingMergeTree) using epoch-timestamp instrumentation
 - Implemented **dual ingestion paths**: Kafka Engine (real-time, <7s, approximate) + Spark→MinIO (cold, exact dedup, ~40s MinIO write), exposing the streaming vs batch trade-off in a Lambda architecture
 
 ### ClickHouse / OLAP
 
 - Configured ClickHouse **ReplacingMergeTree** with Kafka Engine (3-object pattern: queue table + MV + storage) for sub-10s real-time ingestion; zero-downtime dedup on merge
-- Benchmarked **concurrent query performance**: P50=67ms at N=1, P50=93ms at N=10 concurrent analytical queries (GROUP BY city+hour, 7-day window) — 1.4× degradation at 10× load
+- Benchmarked **concurrent query performance**: P50=67ms at N=1, P50=93ms at N=10 concurrent analytical queries (GROUP BY city+hour, 7-day window, ~36k rows, with ORDER BY) — 1.4× degradation at 10× load; separate measurement on 261k rows without ORDER BY yields 19ms (warm parts, no sort overhead)
 - Achieved **2.4× LZ4 compression** on raw_orders (MiB→MiB), **1.9× on rider events** — validated via `system.parts`
 - Optimized ClickHouse schema: `LowCardinality(String)` for enum fields, `Float64` for sub-second timestamps, `parseDateTime64BestEffort` for ISO 8601 ingestion
 
@@ -35,8 +35,8 @@ Source column references the task that produced the number.
 
 ### Reliability / Observability
 
-- Demonstrated **Kafka broker failure recovery in ~40s** with zero message loss (graceful SIGTERM shutdown preserves in-flight messages; Spark resumes from checkpoint offset)
-- Instrumented **7/7 Prometheus targets** (Kafka exporter, ClickHouse exporter, node exporter, 3× Spark Prometheus endpoints, Prometheus self-scrape) with Grafana dashboards
+- Demonstrated **Kafka broker restart recovery in ~40s** with zero message loss under graceful SIGTERM shutdown; Spark resumes from checkpoint offset — hard-crash (SIGKILL) scenario not tested, RF=1 would risk in-flight loss
+- Instrumented **7/7 Prometheus targets** (Kafka exporter, ClickHouse exporter, node exporter, 3× Spark Prometheus endpoints, Prometheus self-scrape) with Grafana dashboards; `raw.payments` consumer lag structurally ~52 msgs by design (payments trail orders by 10–180s)
 - Added **Data Freshness SLA panel** in Grafana: ClickHouse query measures seconds since last order, with green/yellow/red thresholds at 60s/300s
 - Configured **Airflow email failure alerting** across all 3 DAGs (dbt_run, monitor_kafka_lag, batch_daily_summary) via SMTP
 

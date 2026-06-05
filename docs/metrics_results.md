@@ -45,7 +45,7 @@ Prior session estimates (2026-05-16):
 | Mid-peak | ~1,114 (session avg) | ~2,680 |
 | Peak burst | ~1,990 | ~4,380 |
 
-> **CV claim:** "~1,200+ orders/min sustained on single-node Docker (measured); architecture supports 5,000+/min at scale."
+> **CV claim:** "1,244 orders/min sustained on single-node Docker (benchmarked). Generator configured to 5,000/min peak — pipeline not benchmarked at that load."
 
 ---
 
@@ -200,6 +200,8 @@ Query: `SELECT city, toStartOfHour, count(), sum(total_vnd) GROUP BY 1,2 WHERE 7
 
 ClickHouse handles 10 concurrent analytical queries at P50=93ms, P95=116ms. 1.4× P50 degradation at 10× concurrency.
 
+> **Note on dataset difference:** Section 3 shows 19ms on 261k rows (simple GROUP BY, no ORDER BY, warm merged parts). This benchmark shows 67ms on 36k rows (includes `ORDER BY h DESC` + measured under concurrent load). 67ms > 19ms despite fewer rows because: (1) ORDER BY adds sort step, (2) different cache state, (3) concurrent execution. Not an apples-to-apples comparison — report separately.
+
 ---
 
 ## 12. Kafka Broker Failure Recovery (2026-06-05)
@@ -208,8 +210,9 @@ ClickHouse handles 10 concurrent analytical queries at P50=93ms, P95=116ms. 1.4�
 |--------|-------|
 | Downtime | 10s (docker stop → graceful SIGTERM) |
 | Spark recovery time | **~40s** after Kafka restart |
-| Messages lost | **0** (SIGTERM allows graceful shutdown) |
+| Messages lost | **0** (SIGTERM allows graceful shutdown — in-flight committed) |
 | Checkpoint honored | Yes — Spark resumed from last committed offset |
+| Scenario caveat | Graceful shutdown only; SIGKILL (hard crash) not tested — RF=1 would risk in-flight message loss |
 
 ---
 
@@ -229,7 +232,7 @@ Wall time dominated by Python interpreter startup (~8s). dbt internal SQL time i
 
 | Metric | CV Claim | Actual (2026-06-05) |
 |--------|----------|---------------------|
-| Kafka throughput | 5,000+/min peak | **1,244 orders/min** sustained on single-node Docker; 5k+ at scale |
+| Kafka throughput | 1,244 orders/min sustained | **1,244 orders/min** benchmarked on single-node Docker; 5k+/min = generator config, not measured |
 | Hot path E2E latency | seconds | **P50=3.6s, P95=6.6s** (producer → ClickHouse) |
 | ClickHouse query latency | <100ms on 5M rows | **67ms P50 at N=1, 93ms P50 at N=10 concurrent** |
 | ClickHouse compression | 2× | **2.4× raw_orders, 1.9× rider_events, 1.2× payments** |
