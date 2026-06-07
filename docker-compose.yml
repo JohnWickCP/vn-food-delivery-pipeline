@@ -4,170 +4,30 @@ networks:
     name: food-delivery-net
 
 volumes:
-  zookeeper-data:
-  zookeeper-logs:
-  kafka-data:
-  minio-data:
   airflow-postgres-data:
   airflow-logs:
-  clickhouse-data:
 
 services:
   # ─────────────────────────────────────────────
-  # ZOOKEEPER
+  # PUB/SUB SUBSCRIBER — pulls from Pub/Sub, writes JSON to GCS
+  # Bridges Pub/Sub and Spark's file-based streaming source
   # ─────────────────────────────────────────────
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: zookeeper
+  pubsub-subscriber:
+    build:
+      context: ./pubsub_subscriber
+    container_name: pubsub-subscriber
     restart: unless-stopped
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-      ZOOKEEPER_SYNC_LIMIT: 2
-      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok,srvr,stat,mntr"
     volumes:
-      - zookeeper-data:/var/lib/zookeeper/data
-      - zookeeper-logs:/var/lib/zookeeper/log
-    networks:
-      - food-delivery-net
-    healthcheck:
-      test: ["CMD", "bash", "-c", "nc -z localhost 2181 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ─────────────────────────────────────────────
-  # KAFKA
-  # ─────────────────────────────────────────────
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: kafka
-    restart: unless-stopped
-    depends_on:
-      zookeeper:
-        condition: service_healthy
-    ports:
-      - "9092:9092"   # external (host machine)
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      # Retention: keep messages 24h (enough for demo + replay)
-      KAFKA_LOG_RETENTION_HOURS: 24
-      KAFKA_LOG_SEGMENT_BYTES: 1073741824
-      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
-      # Performance tuning for 5000 msg/min
-      KAFKA_NUM_PARTITIONS: 3
-      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      KAFKA_JMX_PORT: 9999
-      KAFKA_JMX_HOSTNAME: kafka
-    volumes:
-      - kafka-data:/var/lib/kafka/data
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-vn-food-delivery-2026}
+      GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID:-vn-food-delivery-2026}
+      GCS_BUCKET: ${GCS_BUCKET:-vn-food-delivery-lake-739a3554}
+      PULL_INTERVAL_SEC: "2"
+      MAX_MESSAGES_PER_PULL: "1000"
     networks:
       - food-delivery-net
-    healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
-
-  # ─────────────────────────────────────────────
-  # KAFKA TOPIC INIT (one-shot job)
-  # ─────────────────────────────────────────────
-  kafka-init:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: kafka-init
-    depends_on:
-      kafka:
-        condition: service_healthy
-    networks:
-      - food-delivery-net
-    entrypoint: ["/bin/bash", "-c"]
-    command: >-
-      echo 'Creating Kafka topics...' &&
-      kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic raw.orders --partitions 3 --replication-factor 1 --config retention.ms=86400000 &&
-      kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic raw.payments --partitions 3 --replication-factor 1 --config retention.ms=86400000 &&
-      kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic raw.rider_events --partitions 3 --replication-factor 1 --config retention.ms=86400000 &&
-      echo 'Done. Topics:' &&
-      kafka-topics --list --bootstrap-server kafka:29092
-
-  # ─────────────────────────────────────────────
-  # CONFLUENT SCHEMA REGISTRY
-  # ─────────────────────────────────────────────
-  schema-registry:
-    image: confluentinc/cp-schema-registry:7.5.0
-    container_name: schema-registry
-    restart: unless-stopped
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-init:
-        condition: service_completed_successfully
-    ports:
-      - "8085:8081"   # Schema Registry API: http://localhost:8085
-    environment:
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka:29092"
-      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      - food-delivery-net
-
-  # ─────────────────────────────────────────────
-  # MINIO — S3-compatible object storage
-  # ─────────────────────────────────────────────
-  minio:
-    image: minio/minio:RELEASE.2024-01-16T16-07-38Z
-    container_name: minio
-    restart: unless-stopped
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Console UI: http://localhost:9001
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    volumes:
-      - minio-data:/data
-    networks:
-      - food-delivery-net
-    command: server /data --console-address ":9001"
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c ':>/dev/tcp/127.0.0.1/9000' 2>/dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  # ─────────────────────────────────────────────
-  # MINIO INIT (one-shot job — create buckets)
-  # ─────────────────────────────────────────────
-  minio-init:
-    image: minio/mc:latest
-    container_name: minio-init
-    depends_on:
-      minio:
-        condition: service_healthy
-    networks:
-      - food-delivery-net
-    volumes:
-      - ./minio/init_buckets.sh:/init_buckets.sh
-    entrypoint: ["/bin/bash", "/init_buckets.sh"]
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
 
   # ─────────────────────────────────────────────
   # SPARK MASTER
@@ -255,23 +115,19 @@ services:
 
   # ─────────────────────────────────────────────
   # SPARK STREAMING — 3 independent drivers (client mode)
-  # Each reads one Kafka topic, writes Parquet to GCS.
+  # Each reads JSON from gs://pubsub-raw/<topic>/, writes Parquet to gs://raw/<topic>/
   # Checkpoints stored in gs://vn-food-delivery-lake-739a3554/checkpoints/<topic>/
   # ─────────────────────────────────────────────
   spark-streaming-orders:
     build:
       context: ./spark
     container_name: spark-streaming-orders
-    restart: on-failure
+    restart: unless-stopped
     depends_on:
       spark-master:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
-      kafka-init:
-        condition: service_completed_successfully
-      schema-registry:
-        condition: service_healthy
+      pubsub-subscriber:
+        condition: service_started
     networks:
       - food-delivery-net
     volumes:
@@ -279,8 +135,6 @@ services:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     command:
       - /opt/spark/bin/spark-submit
@@ -289,8 +143,10 @@ services:
       - --deploy-mode
       - client
       - --total-executor-cores
-      - "2"
+      - "1"
       - --executor-memory
+      - "2G"
+      - --driver-memory
       - "1G"
       - --conf
       - spark.ui.prometheus.enabled=true
@@ -300,16 +156,12 @@ services:
     build:
       context: ./spark
     container_name: spark-streaming-payments
-    restart: on-failure
+    restart: unless-stopped
     depends_on:
       spark-master:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
-      kafka-init:
-        condition: service_completed_successfully
-      schema-registry:
-        condition: service_healthy
+      pubsub-subscriber:
+        condition: service_started
     networks:
       - food-delivery-net
     volumes:
@@ -317,8 +169,6 @@ services:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     command:
       - /opt/spark/bin/spark-submit
@@ -327,8 +177,10 @@ services:
       - --deploy-mode
       - client
       - --total-executor-cores
-      - "2"
+      - "1"
       - --executor-memory
+      - "2G"
+      - --driver-memory
       - "1G"
       - --conf
       - spark.ui.prometheus.enabled=true
@@ -338,16 +190,12 @@ services:
     build:
       context: ./spark
     container_name: spark-streaming-rider-events
-    restart: on-failure
+    restart: unless-stopped
     depends_on:
       spark-master:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
-      kafka-init:
-        condition: service_completed_successfully
-      schema-registry:
-        condition: service_healthy
+      pubsub-subscriber:
+        condition: service_started
     networks:
       - food-delivery-net
     volumes:
@@ -355,8 +203,6 @@ services:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     command:
       - /opt/spark/bin/spark-submit
@@ -365,8 +211,10 @@ services:
       - --deploy-mode
       - client
       - --total-executor-cores
-      - "2"
+      - "1"
       - --executor-memory
+      - "2G"
+      - --driver-memory
       - "1G"
       - --conf
       - spark.ui.prometheus.enabled=true
@@ -433,16 +281,15 @@ services:
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW_CONN_SPARK_DEFAULT: "spark://spark-master:7077"
-      DBT_CLICKHOUSE_HOST: clickhouse
-      DBT_CLICKHOUSE_PORT: "8123"
-      DBT_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      DBT_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-project-739a3554-aa69-4eab-9e2}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt:/opt/airflow/dbt
       - ./spark/jobs:/opt/spark/jobs:ro
       - airflow-logs:/opt/airflow/logs
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     networks:
       - food-delivery-net
     command: webserver
@@ -470,11 +317,9 @@ services:
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-supersecret}
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      DBT_CLICKHOUSE_HOST: clickhouse
-      DBT_CLICKHOUSE_PORT: "8123"
-      DBT_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      DBT_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
       AIRFLOW_CONN_SPARK_DEFAULT: "spark://spark-master:7077"
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-project-739a3554-aa69-4eab-9e2}
       AIRFLOW__EMAIL__EMAIL_BACKEND: "airflow.utils.email.send_email_smtp"
       AIRFLOW__SMTP__SMTP_HOST: "smtp.gmail.com"
       AIRFLOW__SMTP__SMTP_STARTTLS: "True"
@@ -489,66 +334,27 @@ services:
       - ./dbt:/opt/airflow/dbt
       - ./spark/jobs:/opt/spark/jobs:ro
       - airflow-logs:/opt/airflow/logs
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     networks:
       - food-delivery-net
     command: scheduler
 
   # ─────────────────────────────────────────────
-  # CLICKHOUSE
-  # ─────────────────────────────────────────────
-  clickhouse:
-    image: clickhouse/clickhouse-server:24.1
-    container_name: clickhouse
-    restart: unless-stopped
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-init:
-        condition: service_completed_successfully
-    ports:
-      - "8123:8123"   # HTTP (dbt + queries)
-      - "9900:9000"   # Native TCP — mapped to 9900 to avoid conflict with MinIO 9000
-    environment:
-      CLICKHOUSE_DB: food_delivery
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    volumes:
-      - clickhouse-data:/var/lib/clickhouse
-      - ./clickhouse/init:/docker-entrypoint-initdb.d
-    networks:
-      - food-delivery-net
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
-  # ─────────────────────────────────────────────
-  # DATA GENERATOR
+  # DATA GENERATOR — publishes to Pub/Sub
   # ─────────────────────────────────────────────
   generator:
     build:
       context: ./generator
     container_name: generator
     restart: unless-stopped
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-init:
-        condition: service_completed_successfully
-      schema-registry:
-        condition: service_healthy
     networks:
       - food-delivery-net
+    volumes:
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-vn-food-delivery-2026}
+      GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID:-vn-food-delivery-2026}
       ORDERS_PER_MIN_PEAK: ${ORDERS_PER_MIN_PEAK:-5000}
       ORDERS_PER_MIN_BASE: ${ORDERS_PER_MIN_BASE:-1200}
       NUM_RIDERS: ${NUM_RIDERS:-200}
@@ -569,17 +375,14 @@ services:
     depends_on:
       spark-master:
         condition: service_healthy
-      minio:
-        condition: service_healthy
     networks:
       - food-delivery-net
     volumes:
       - ./spark/jobs:/opt/spark/jobs:ro
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     environment:
-      MINIO_ENDPOINT:  http://minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     command:
       - /opt/spark/bin/spark-submit
       - --master
@@ -592,22 +395,3 @@ services:
       - "2G"
       - /opt/spark/jobs/batch_daily_summary.py
 
-  # ─────────────────────────────────────────────
-  # KAFKA UI
-  # ─────────────────────────────────────────────
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: kafka-ui
-    restart: unless-stopped
-    depends_on:
-      kafka:
-        condition: service_healthy
-    ports:
-      - "8090:8080"   # http://localhost:8090
-    environment:
-      KAFKA_CLUSTERS_0_NAME: food-delivery-local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-      KAFKA_CLUSTERS_0_JMXPORT: 9999
-    networks:
-      - food-delivery-net
