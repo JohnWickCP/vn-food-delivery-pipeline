@@ -36,6 +36,7 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
     spark.conf.set("spark.sql.session.timeZone", "UTC")
     spark.conf.set("spark.sql.files.ignoreMissingFiles", "true")
+    spark.conf.set("spark.sql.shuffle.partitions", "4")
 
     raw = (
         spark.readStream
@@ -57,47 +58,40 @@ def main() -> None:
     )
 
     def write_batch_with_timing(batch_df, epoch_id):
-        batch_df = batch_df.cache()
         try:
-            try:
-                row_count = batch_df.count()
-            except Exception as exc:
-                exc_str = str(exc)
-                if "Item not found" in exc_str or "generation is deleted" in exc_str:
-                    print(f"BATCH_SKIP epoch={epoch_id} (stale GCS file, skipping)", flush=True)
-                    return
-                raise
-
-            if row_count == 0:
-                print(f"BATCH_SKIP epoch={epoch_id} (empty)", flush=True)
+            batch_df = batch_df.localCheckpoint(eager=True)
+        except Exception as exc:
+            exc_str = str(exc)
+            if "Item not found" in exc_str or "generation is deleted" in exc_str:
+                print(f"BATCH_SKIP epoch={epoch_id} (stale GCS file, skipping)", flush=True)
                 return
+            raise
 
-            print(f"BATCH_START epoch={epoch_id} rows={row_count}", flush=True)
-            t0 = time.perf_counter()
-            try:
-                (batch_df.write
-                    .format("parquet")
-                    .option("path", OUTPUT_PATH)
-                    .partitionBy("year", "month", "day")
-                    .mode("append")
-                    .save())
-                elapsed = time.perf_counter() - t0
-                msg = (
-                    f"BATCH_TIMING epoch={epoch_id} rows={row_count} "
-                    f"write_sec={elapsed:.3f} rows_per_sec={row_count/elapsed:.0f}"
-                )
-                print(msg, flush=True)
-                logger.warning(msg)
-            except Exception as exc:
-                exc_str = str(exc)
-                if "Item not found" in exc_str or "generation is deleted" in exc_str:
-                    print(f"BATCH_SKIP epoch={epoch_id} rows={row_count} (stale GCS file, skipping)", flush=True)
-                    return
-                print(f"BATCH_ERROR epoch={epoch_id} rows={row_count} error={exc}", flush=True)
-                logger.error("foreachBatch write failed epoch=%s", epoch_id, exc_info=True)
-                raise
-        finally:
-            batch_df.unpersist()
+        row_count = batch_df.count()
+        if row_count == 0:
+            print(f"BATCH_SKIP epoch={epoch_id} (empty)", flush=True)
+            return
+
+        print(f"BATCH_START epoch={epoch_id} rows={row_count}", flush=True)
+        t0 = time.perf_counter()
+        try:
+            (batch_df.write
+                .format("parquet")
+                .option("path", OUTPUT_PATH)
+                .partitionBy("year", "month", "day")
+                .mode("append")
+                .save())
+            elapsed = time.perf_counter() - t0
+            msg = (
+                f"BATCH_TIMING epoch={epoch_id} rows={row_count} "
+                f"write_sec={elapsed:.3f} rows_per_sec={row_count/elapsed:.0f}"
+            )
+            print(msg, flush=True)
+            logger.warning(msg)
+        except Exception as exc:
+            print(f"BATCH_ERROR epoch={epoch_id} rows={row_count} error={exc}", flush=True)
+            logger.error("foreachBatch write failed epoch=%s", epoch_id, exc_info=True)
+            raise
 
     (
         payments.writeStream
