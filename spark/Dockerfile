@@ -4,12 +4,10 @@ USER root
 
 ARG SPARK_JARS=/opt/spark/jars
 
-# S3A jars — hadoop-aws version must match Hadoop 3.3.4 bundled with Spark 3.5.0
-# aws-java-sdk-bundle version must be compatible with hadoop-aws-3.3.4
-RUN curl -fsSL -o ${SPARK_JARS}/hadoop-aws-3.3.4.jar \
-        https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar \
-    && curl -fsSL -o ${SPARK_JARS}/aws-java-sdk-bundle-1.12.262.jar \
-        https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar \
+# GCS connector — replaces hadoop-aws + aws-java-sdk-bundle
+# Auth via GOOGLE_APPLICATION_CREDENTIALS env var (ADC)
+RUN curl -fsSL -o ${SPARK_JARS}/gcs-connector-hadoop3-latest.jar \
+        https://storage.googleapis.com/hadoop-lib/gcs/gcs-connector-hadoop3-latest.jar \
     # Kafka structured streaming jars for Spark 3.5.0 + Scala 2.12
     && curl -fsSL -o ${SPARK_JARS}/spark-sql-kafka-0-10_2.12-3.5.0.jar \
         https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.0/spark-sql-kafka-0-10_2.12-3.5.0.jar \

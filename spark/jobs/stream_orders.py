@@ -16,13 +16,10 @@ from pyspark.sql.types import (
 logger = logging.getLogger(__name__)
 
 KAFKA_SERVERS   = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
-MINIO_ENDPOINT  = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
-MINIO_ACCESS    = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET    = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 SR_URL          = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
-BUCKET          = "food-delivery-lake"
-OUTPUT_PATH     = f"s3a://{BUCKET}/raw/orders/"
-CHECKPOINT_PATH = f"s3a://{BUCKET}/checkpoints/orders/"
+GCS_BUCKET      = "vn-food-delivery-lake-739a3554"
+OUTPUT_PATH     = f"gs://{GCS_BUCKET}/raw/orders/"
+CHECKPOINT_PATH = f"gs://{GCS_BUCKET}/checkpoints/orders/"
 
 OUTPUT_SCHEMA = StructType([
     StructField("order_id",          StringType(),    False),
@@ -53,17 +50,7 @@ def _fetch_avro_schema(subject: str) -> dict:
 
 
 def build_session() -> SparkSession:
-    return (
-        SparkSession.builder
-        .appName("stream-orders")
-        .config("spark.hadoop.fs.s3a.endpoint",              MINIO_ENDPOINT)
-        .config("spark.hadoop.fs.s3a.access.key",            MINIO_ACCESS)
-        .config("spark.hadoop.fs.s3a.secret.key",            MINIO_SECRET)
-        .config("spark.hadoop.fs.s3a.path.style.access",     "true")
-        .config("spark.hadoop.fs.s3a.impl",                  "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled","false")
-        .getOrCreate()
-    )
+    return SparkSession.builder.appName("stream-orders").getOrCreate()
 
 
 def main() -> None:

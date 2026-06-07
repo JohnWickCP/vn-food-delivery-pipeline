@@ -8,10 +8,7 @@ from pyspark.sql.functions import (
     lit, sum, unix_timestamp, when,
 )
 
-MINIO_ENDPOINT  = os.getenv("MINIO_ENDPOINT",  "http://minio:9000")
-MINIO_ACCESS    = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET    = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-BUCKET          = "food-delivery-lake"
+GCS_BUCKET = "vn-food-delivery-lake-739a3554"
 
 DEFAULT_DATE = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -25,23 +22,13 @@ TARGET_DATE = args.date
 date_obj    = datetime.strptime(TARGET_DATE, "%Y-%m-%d")
 Y, M, D     = date_obj.year, date_obj.month, date_obj.day
 
-ORDERS_PATH   = f"s3a://{BUCKET}/raw/orders/year={Y}/month={M}/day={D}/"
-PAYMENTS_PATH = f"s3a://{BUCKET}/raw/payments/year={Y}/month={M}/day={D}/"
-OUTPUT_PATH   = f"s3a://{BUCKET}/batch/daily_summary/date={TARGET_DATE}/"
+ORDERS_PATH   = f"gs://{GCS_BUCKET}/raw/orders/year={Y}/month={M}/day={D}/"
+PAYMENTS_PATH = f"gs://{GCS_BUCKET}/raw/payments/year={Y}/month={M}/day={D}/"
+OUTPUT_PATH   = f"gs://{GCS_BUCKET}/batch/daily_summary/date={TARGET_DATE}/"
 
 
 def build_session() -> SparkSession:
-    return (
-        SparkSession.builder
-        .appName(f"batch-daily-summary-{TARGET_DATE}")
-        .config("spark.hadoop.fs.s3a.endpoint",               MINIO_ENDPOINT)
-        .config("spark.hadoop.fs.s3a.access.key",             MINIO_ACCESS)
-        .config("spark.hadoop.fs.s3a.secret.key",             MINIO_SECRET)
-        .config("spark.hadoop.fs.s3a.path.style.access",      "true")
-        .config("spark.hadoop.fs.s3a.impl",                   "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        .getOrCreate()
-    )
+    return SparkSession.builder.appName(f"batch-daily-summary-{TARGET_DATE}").getOrCreate()
 
 
 def main() -> None:

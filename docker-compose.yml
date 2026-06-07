@@ -183,6 +183,9 @@ services:
       - "7077:7077"   # Spark submit port
     volumes:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     networks:
       - food-delivery-net
     healthcheck:
@@ -215,6 +218,9 @@ services:
       - "8082:8081"   # Worker UI: http://localhost:8082
     volumes:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     networks:
       - food-delivery-net
 
@@ -241,13 +247,16 @@ services:
       - "8083:8081"   # Worker UI: http://localhost:8083
     volumes:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     networks:
       - food-delivery-net
 
   # ─────────────────────────────────────────────
   # SPARK STREAMING — 3 independent drivers (client mode)
-  # Each reads one Kafka topic, writes Parquet to MinIO.
-  # Checkpoints stored in s3a://food-delivery-lake/checkpoints/<topic>/
+  # Each reads one Kafka topic, writes Parquet to GCS.
+  # Checkpoints stored in gs://vn-food-delivery-lake-739a3554/checkpoints/<topic>/
   # ─────────────────────────────────────────────
   spark-streaming-orders:
     build:
@@ -259,11 +268,7 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      minio:
-        condition: service_healthy
       kafka-init:
-        condition: service_completed_successfully
-      minio-init:
         condition: service_completed_successfully
       schema-registry:
         condition: service_healthy
@@ -272,12 +277,11 @@ services:
     volumes:
       - ./spark/jobs:/opt/spark/jobs:ro
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SCHEMA_REGISTRY_URL: http://schema-registry:8081
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     command:
       - /opt/spark/bin/spark-submit
       - --master
@@ -302,11 +306,7 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      minio:
-        condition: service_healthy
       kafka-init:
-        condition: service_completed_successfully
-      minio-init:
         condition: service_completed_successfully
       schema-registry:
         condition: service_healthy
@@ -315,12 +315,11 @@ services:
     volumes:
       - ./spark/jobs:/opt/spark/jobs:ro
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SCHEMA_REGISTRY_URL: http://schema-registry:8081
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     command:
       - /opt/spark/bin/spark-submit
       - --master
@@ -345,11 +344,7 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      minio:
-        condition: service_healthy
       kafka-init:
-        condition: service_completed_successfully
-      minio-init:
         condition: service_completed_successfully
       schema-registry:
         condition: service_healthy
@@ -358,12 +353,11 @@ services:
     volumes:
       - ./spark/jobs:/opt/spark/jobs:ro
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SCHEMA_REGISTRY_URL: http://schema-registry:8081
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     command:
       - /opt/spark/bin/spark-submit
       - --master
