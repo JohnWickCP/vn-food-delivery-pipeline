@@ -303,22 +303,3 @@ MinIO S3 API already uses `9000`. Both services in the same Docker network would
 6. **Credentials in batch DAG via env vars** — `airflow/dags/batch_daily_summary.py` reads MinIO/ClickHouse credentials from environment variables (`os.getenv()`). Production: use Airflow Connections (Admin → Connections UI) and retrieve via `BaseHook.get_connection()` to avoid credentials in environment.
 7. **Spark batch wired via SparkSubmitOperator** — Airflow DAG uses `SparkSubmitOperator` to submit the batch job and waits for completion. Streaming jobs run as `restart: unless-stopped` Docker services. The batch profile (`--profile batch`) can also be triggered manually: `docker compose --profile batch run --rm spark-batch-daily --date YYYY-MM-DD`.
 8. **Non-atomic batch load** — `batch_daily_summary` DAG does DELETE then INSERT as separate statements. If INSERT fails mid-way, the day's data is gone until rerun. Production: use ReplacingMergeTree version column (insert new version, rely on FINAL for dedup) instead of DELETE+INSERT.
-
-## Roadmap: GCP Migration
-
-The local Docker Compose stack is **feature-complete**. Next phase: migrate to Google Cloud Platform using managed services where cost-justified.
-
-| Local (Docker) | GCP Target | Rationale |
-|----------------|------------|-----------|
-| Apache Kafka | **Google Cloud Pub/Sub** | Native GCP, zero broker management, free 10GB/month |
-| MinIO | **Google Cloud Storage (GCS)** | S3-compatible, native Spark + dbt support |
-| ClickHouse | **BigQuery** | Serverless OLAP, free 1TB query/month, dbt-bigquery adapter |
-| Spark (Docker) | **Spark on GCE VM** | Keep PySpark code unchanged — no Dataflow rewrite needed |
-| Airflow (Docker) | **Airflow self-hosted on GCE VM** | Cloud Composer costs $400+/month — not justified for this workload |
-| Grafana | **Grafana on GCE + Looker Studio** | Grafana for infra metrics; Looker Studio for business dashboards (free, shareable) |
-
-**Not using:** Cloud Composer (cost), Dataflow (would require full Beam rewrite).
-
-**Estimated GCP cost:** ~$50/month (e2-standard-2 VM + GCS + BigQuery + Pub/Sub), within $300 free credit for 6+ months.
-
-Status: **In Planning** (2026-06-07) — local stack benchmarked, GCP migration next.
