@@ -43,6 +43,7 @@ Thumbs.db
 .project_stats.md
 
 # Project-specific (không commit lên GitHub public)
+GCP_MIGRATION_PLAN.md
 BENCHMARK_TASKS.md
 docs/BENCHMARK.md
 docs/cv_bullets.md

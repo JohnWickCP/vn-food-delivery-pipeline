@@ -43,12 +43,12 @@ Nói cụ thể hơn:
 
 | Chỉ số | Giá trị |
 |--------|---------|
-| Tốc độ xử lý | ~1,000–2,000 đơn/phút (off-peak đến peak, single-node Docker) |
-| Độ trễ vào ClickHouse | vài giây kể từ khi đặt đơn (Kafka Engine) |
-| Tốc độ query phân tích | 3–19ms trên 261,000+ bản ghi |
+| Tốc độ xử lý | **1,244 đơn/phút** sustained (benchmarked 2026-06-05, single-node Docker) |
+| Độ trễ vào ClickHouse | **P50=3.6s, P95=6.6s** (producer → ClickHouse, đo bằng producer_ts) |
+| Tốc độ query phân tích | **3–19ms** trên 261,000+ bản ghi; P50=67ms ở N=10 concurrent |
 | Kiểm thử dữ liệu | 55/55 test pass, 100% |
 | Hệ thống giám sát | 7/7 service được theo dõi |
-| Lưu trữ lạnh (MinIO) | 161 MiB / 16 phút → ~14 GB/ngày ở throughput ổn định |
+| Lưu trữ lạnh (MinIO) | 95 rows/sec Spark → MinIO; ~14 GB/ngày ở throughput ổn định |
 
 ---
 
@@ -160,12 +160,12 @@ Each food order takes two parallel routes from generator to dashboard:
 
 | Metric | Target | Actual |
 |--------|--------|--------|
-| Kafka throughput | 5,000+ orders/min (peak) | ~1,000–2,000 orders/min on single-node Docker; architecture supports 5,000+/min at scale |
-| ClickHouse query latency | <100ms on 5M rows | **3–19ms on 261k rows**; 29–103ms on 5M (prior perf test) |
+| Kafka throughput | 5,000+ orders/min (peak) | **1,244 orders/min** sustained on single-node Docker (benchmarked 2026-06-05); generator config supports 5,000+/min |
+| ClickHouse query latency | <100ms on 5M rows | **3–19ms** on 261k rows; **P50=67ms, P95=116ms** at N=10 concurrent; 29–103ms on 5M (perf test) |
 | dbt test coverage | 100% (55 tests) | **55/55 tests pass** |
 | Prometheus targets | 7/7 up | **7/7 up** |
-| MinIO cold storage | ~14GB / day | 161 MiB in 16 min → ~600 MB/h → ~14 GB/day at sustained rate |
-| Events ingested | 5M+/day theoretical | 17,830 orders + 17,818 payments + 6,200 GPS pings in 16 min |
+| MinIO cold storage | ~14GB / day | **95 rows/sec** Spark → MinIO; 161 MiB in 16 min → ~14 GB/day at sustained rate |
+| Events ingested | 5M+/day theoretical | 17,830 orders + 17,818 payments + 6,200 GPS pings in 16 min; **564K events** in 2.5h run |
 | dbt models | 10 models, 3 layers | 10/10 PASS (staging → intermediate → marts) |
 
 > Full measured output → [`docs/metrics_results.md`](docs/metrics_results.md)
@@ -303,3 +303,22 @@ MinIO S3 API already uses `9000`. Both services in the same Docker network would
 6. **Credentials in batch DAG via env vars** — `airflow/dags/batch_daily_summary.py` reads MinIO/ClickHouse credentials from environment variables (`os.getenv()`). Production: use Airflow Connections (Admin → Connections UI) and retrieve via `BaseHook.get_connection()` to avoid credentials in environment.
 7. **Spark batch wired via SparkSubmitOperator** — Airflow DAG uses `SparkSubmitOperator` to submit the batch job and waits for completion. Streaming jobs run as `restart: unless-stopped` Docker services. The batch profile (`--profile batch`) can also be triggered manually: `docker compose --profile batch run --rm spark-batch-daily --date YYYY-MM-DD`.
 8. **Non-atomic batch load** — `batch_daily_summary` DAG does DELETE then INSERT as separate statements. If INSERT fails mid-way, the day's data is gone until rerun. Production: use ReplacingMergeTree version column (insert new version, rely on FINAL for dedup) instead of DELETE+INSERT.
+
+## Roadmap: GCP Migration
+
+The local Docker Compose stack is **feature-complete**. Next phase: migrate to Google Cloud Platform using managed services where cost-justified.
+
+| Local (Docker) | GCP Target | Rationale |
+|----------------|------------|-----------|
+| Apache Kafka | **Google Cloud Pub/Sub** | Native GCP, zero broker management, free 10GB/month |
+| MinIO | **Google Cloud Storage (GCS)** | S3-compatible, native Spark + dbt support |
+| ClickHouse | **BigQuery** | Serverless OLAP, free 1TB query/month, dbt-bigquery adapter |
+| Spark (Docker) | **Spark on GCE VM** | Keep PySpark code unchanged — no Dataflow rewrite needed |
+| Airflow (Docker) | **Airflow self-hosted on GCE VM** | Cloud Composer costs $400+/month — not justified for this workload |
+| Grafana | **Grafana on GCE + Looker Studio** | Grafana for infra metrics; Looker Studio for business dashboards (free, shareable) |
+
+**Not using:** Cloud Composer (cost), Dataflow (would require full Beam rewrite).
+
+**Estimated GCP cost:** ~$50/month (e2-standard-2 VM + GCS + BigQuery + Pub/Sub), within $300 free credit for 6+ months.
+
+Status: **In Planning** (2026-06-07) — local stack benchmarked, GCP migration next.
