@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import random
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -10,7 +9,6 @@ from uuid import UUID
 import config
 from producers.base_producer import BaseProducer
 
-_AVSC = os.path.join(os.path.dirname(__file__), "..", "schemas", "avro", "payment.avsc")
 from schemas.payment import Payment
 
 logger = logging.getLogger(__name__)
@@ -21,7 +19,7 @@ _STATUS_WEIGHTS = {"success": 93, "failed": 5, "refunded": 2}
 
 class PaymentProducer(BaseProducer):
     def __init__(self, order_queue: asyncio.Queue) -> None:
-        super().__init__(avsc_path=_AVSC)
+        super().__init__()
         self.order_queue = order_queue
 
     def _make_payment(self, order_id: str, method: str, amount: int) -> Payment:

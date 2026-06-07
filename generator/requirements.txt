@@ -1,5 +1,4 @@
-confluent-kafka[avro]==2.3.0
-fastavro>=1.9.0
+google-cloud-pubsub==2.21.4
 faker==22.2.0
 pydantic==2.5.3
 python-dotenv==1.0.0

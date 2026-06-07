@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import random
 from datetime import datetime, timezone
 from uuid import uuid4
 from zoneinfo import ZoneInfo
-
-_AVSC = os.path.join(os.path.dirname(__file__), "..", "schemas", "avro", "order.avsc")
 
 _VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
@@ -65,7 +62,7 @@ RESTAURANT_POOL = [uuid4() for _ in range(500)]
 
 class OrderProducer(BaseProducer):
     def __init__(self, order_queue: asyncio.Queue) -> None:
-        super().__init__(avsc_path=_AVSC)
+        super().__init__()
         self.order_queue = order_queue
 
     def _current_rate(self) -> int:
