@@ -1,0 +1,177 @@
+{
+  "id": null,
+  "uid": "food-delivery-business-bq",
+  "title": "Food Delivery — Business Metrics (BigQuery)",
+  "tags": ["food-delivery", "business", "gcp"],
+  "timezone": "Asia/Ho_Chi_Minh",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Orders Per Hour by City",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+          "rawSql": "SELECT TIMESTAMP(hour_bucket) AS time, SUM(CASE WHEN city = 'hcmc' THEN total_orders ELSE 0 END) AS HCMC, SUM(CASE WHEN city = 'hanoi' THEN total_orders ELSE 0 END) AS Hanoi, SUM(CASE WHEN city = 'danang' THEN total_orders ELSE 0 END) AS Danang FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to)) GROUP BY time ORDER BY time",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Revenue Per Hour by City (k VND)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+          "rawSql": "SELECT TIMESTAMP(hour_bucket) AS time, SUM(CASE WHEN city = 'hcmc' THEN total_revenue_k_vnd ELSE 0 END) AS HCMC, SUM(CASE WHEN city = 'hanoi' THEN total_revenue_k_vnd ELSE 0 END) AS Hanoi, SUM(CASE WHEN city = 'danang' THEN total_revenue_k_vnd ELSE 0 END) AS Danang FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to)) GROUP BY time ORDER BY time",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__series.name}", "custom": { "lineWidth": 2 } },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Total Orders",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+          "rawSql": "SELECT SUM(total_orders) AS value FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to))",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": { "steps": [{ "color": "green", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value" }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Total Revenue (k VND)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+          "rawSql": "SELECT SUM(total_revenue_k_vnd) AS value FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to))",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": { "steps": [{ "color": "green", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value" }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Cancellation Rate",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+          "rawSql": "SELECT ROUND(SUM(cancelled_orders) * 100.0 / SUM(total_orders), 1) AS value FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to))",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name" }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Avg Order Value (k VND)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+          "rawSql": "SELECT ROUND(SUM(total_revenue_k_vnd) / SUM(total_orders), 1) AS value FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to))",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": { "steps": [{ "color": "blue", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name" }
+    },
+    {
+      "id": 7,
+      "type": "piechart",
+      "title": "Payment Methods",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+          "rawSql": "SELECT 'MoMo' AS method, SUM(momo_orders) AS orders FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to)) UNION ALL SELECT 'VNPay', SUM(vnpay_orders) FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to)) UNION ALL SELECT 'ZaloPay', SUM(zalopay_orders) FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to)) UNION ALL SELECT 'Cash', SUM(cash_orders) FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to))",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "pieType": "donut", "tooltip": { "mode": "single" }, "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "id": 8,
+      "type": "piechart",
+      "title": "Meal Period Distribution",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-bigquery-datasource", "uid": "bigquery-food-delivery" },
+          "rawSql": "SELECT 'Lunch (11-13h)' AS period, SUM(lunch_orders) AS orders FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to)) UNION ALL SELECT 'Dinner (18-20h)', SUM(dinner_orders) FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to)) UNION ALL SELECT 'Off-peak', SUM(off_peak_orders) FROM food_delivery_dbt.rpt_hourly_revenue WHERE hour_bucket BETWEEN DATETIME(TIMESTAMP_MILLIS($__from)) AND DATETIME(TIMESTAMP_MILLIS($__to))",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "pieType": "pie", "tooltip": { "mode": "single" }, "legend": { "displayMode": "table", "placement": "right" } }
+    }
+  ]
+}

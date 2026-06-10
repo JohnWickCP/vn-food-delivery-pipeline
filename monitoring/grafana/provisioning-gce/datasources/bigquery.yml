@@ -1,0 +1,14 @@
+apiVersion: 1
+
+datasources:
+  - name: BigQuery
+    uid: bigquery-food-delivery
+    type: grafana-bigquery-datasource
+    access: proxy
+    # GCE auth: uses VM service account via metadata server (no key file needed)
+    # Prereq: VM service account must have roles/bigquery.dataViewer on food_delivery_dbt dataset
+    jsonData:
+      authenticationType: gce
+      defaultProject: project-739a3554-aa69-4eab-9e2
+      defaultDataset: food_delivery_dbt
+    editable: false
