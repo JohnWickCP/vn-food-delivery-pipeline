@@ -11,3 +11,4 @@ SELECT
     DATETIME(processed_at, 'Asia/Ho_Chi_Minh')                  AS processed_at_local,
     event_timestamp
 FROM {{ source('food_delivery', 'raw_payments') }}
+QUALIFY ROW_NUMBER() OVER (PARTITION BY payment_id ORDER BY event_timestamp DESC) = 1

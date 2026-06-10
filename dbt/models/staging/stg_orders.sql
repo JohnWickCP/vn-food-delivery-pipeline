@@ -22,3 +22,4 @@ SELECT
     event_timestamp
 FROM {{ source('food_delivery', 'raw_orders') }}
 WHERE total_vnd > 0
+QUALIFY ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY event_timestamp DESC) = 1
