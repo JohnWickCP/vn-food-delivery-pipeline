@@ -1,0 +1,398 @@
+networks:
+  food-delivery-net:
+    driver: bridge
+    name: food-delivery-net
+
+volumes:
+  airflow-postgres-data:
+  airflow-logs:
+
+services:
+  # ─────────────────────────────────────────────
+  # PUB/SUB SUBSCRIBER — pulls from Pub/Sub, writes JSONL to GCS
+  # ─────────────────────────────────────────────
+  pubsub-subscriber:
+    build:
+      context: ./pubsub_subscriber
+    container_name: pubsub-subscriber
+    restart: unless-stopped
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    environment:
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-project-739a3554-aa69-4eab-9e2}
+      GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID:-project-739a3554-aa69-4eab-9e2}
+      GCS_BUCKET: ${GCS_BUCKET:-vn-food-delivery-lake-739a3554}
+      PULL_INTERVAL_SEC: "2"
+      MAX_MESSAGES_PER_PULL: "1000"
+    networks:
+      - food-delivery-net
+
+  # ─────────────────────────────────────────────
+  # SPARK MASTER
+  # ─────────────────────────────────────────────
+  spark-master:
+    build:
+      context: ./spark
+    container_name: spark-master
+    restart: unless-stopped
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "8081:8080"   # Spark Master UI: http://<VM_IP>:8081
+      - "7077:7077"
+    volumes:
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    networks:
+      - food-delivery-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ─────────────────────────────────────────────
+  # SPARK WORKER — 1 worker only on e2-standard-2 (8GB RAM)
+  # OOM escalation: add spark-worker-2 block (port 8083:8081) or upgrade to e2-standard-4
+  # ─────────────────────────────────────────────
+  spark-worker-1:
+    build:
+      context: ./spark
+    container_name: spark-worker-1
+    restart: unless-stopped
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.worker.Worker
+      - --memory
+      - ${SPARK_WORKER_MEMORY:-1G}
+      - --cores
+      - "${SPARK_WORKER_CORES:-3}"
+      - spark://spark-master:7077
+    ports:
+      - "8082:8081"
+    volumes:
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    networks:
+      - food-delivery-net
+
+  # ─────────────────────────────────────────────
+  # SPARK STREAMING — 3 drivers (client mode)
+  # executor-memory 512m: IO-bound jobs, GCS read/write dominates
+  # ─────────────────────────────────────────────
+  spark-streaming-orders:
+    build:
+      context: ./spark
+    container_name: spark-streaming-orders
+    restart: unless-stopped
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      pubsub-subscriber:
+        condition: service_started
+    networks:
+      - food-delivery-net
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        while true; do
+          /opt/spark/bin/spark-submit \
+            --master spark://spark-master:7077 \
+            --deploy-mode client \
+            --total-executor-cores 1 \
+            --executor-memory 512m \
+            --driver-memory 512m \
+            --conf spark.ui.prometheus.enabled=true \
+            /opt/spark/jobs/stream_orders.py
+          echo "stream-orders done, sleeping 300s before next run"
+          sleep 300
+        done
+
+  spark-streaming-payments:
+    build:
+      context: ./spark
+    container_name: spark-streaming-payments
+    restart: unless-stopped
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      pubsub-subscriber:
+        condition: service_started
+    networks:
+      - food-delivery-net
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        while true; do
+          /opt/spark/bin/spark-submit \
+            --master spark://spark-master:7077 \
+            --deploy-mode client \
+            --total-executor-cores 1 \
+            --executor-memory 512m \
+            --driver-memory 512m \
+            --conf spark.ui.prometheus.enabled=true \
+            /opt/spark/jobs/stream_payments.py
+          echo "stream-payments done, sleeping 300s before next run"
+          sleep 300
+        done
+
+  spark-streaming-rider-events:
+    build:
+      context: ./spark
+    container_name: spark-streaming-rider-events
+    restart: unless-stopped
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      pubsub-subscriber:
+        condition: service_started
+    networks:
+      - food-delivery-net
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        while true; do
+          /opt/spark/bin/spark-submit \
+            --master spark://spark-master:7077 \
+            --deploy-mode client \
+            --total-executor-cores 1 \
+            --executor-memory 512m \
+            --driver-memory 512m \
+            --conf spark.ui.prometheus.enabled=true \
+            /opt/spark/jobs/stream_rider_events.py
+          echo "stream-rider-events done, sleeping 300s before next run"
+          sleep 300
+        done
+
+  # ─────────────────────────────────────────────
+  # AIRFLOW POSTGRES — metadata DB
+  # ─────────────────────────────────────────────
+  airflow-postgres:
+    image: postgres:15-alpine
+    container_name: airflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AIRFLOW_DB_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow}
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
+    networks:
+      - food-delivery-net
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # AIRFLOW INIT (one-shot)
+  # ─────────────────────────────────────────────
+  airflow-init:
+    build: ./airflow
+    container_name: airflow-init
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    networks:
+      - food-delivery-net
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow}:${AIRFLOW_DB_PASSWORD:-airflow}@airflow-postgres/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-supersecret}
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - "airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true"
+
+  # ─────────────────────────────────────────────
+  # AIRFLOW WEBSERVER
+  # ─────────────────────────────────────────────
+  airflow-webserver:
+    build: ./airflow
+    container_name: airflow-webserver
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"   # Airflow UI: http://<VM_IP>:8080
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow}:${AIRFLOW_DB_PASSWORD:-airflow}@airflow-postgres/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-supersecret}
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW_CONN_SPARK_DEFAULT: "spark://spark-master:7077"
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-project-739a3554-aa69-4eab-9e2}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./dbt:/opt/airflow/dbt
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - airflow-logs:/opt/airflow/logs
+    networks:
+      - food-delivery-net
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ─────────────────────────────────────────────
+  # AIRFLOW SCHEDULER
+  # ─────────────────────────────────────────────
+  airflow-scheduler:
+    build: ./airflow
+    container_name: airflow-scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow}:${AIRFLOW_DB_PASSWORD:-airflow}@airflow-postgres/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-supersecret}
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW_CONN_SPARK_DEFAULT: "spark://spark-master:7077"
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-project-739a3554-aa69-4eab-9e2}
+      AIRFLOW__EMAIL__EMAIL_BACKEND: "airflow.utils.email.send_email_smtp"
+      AIRFLOW__SMTP__SMTP_HOST: "smtp.gmail.com"
+      AIRFLOW__SMTP__SMTP_STARTTLS: "True"
+      AIRFLOW__SMTP__SMTP_SSL: "False"
+      AIRFLOW__SMTP__SMTP_PORT: "587"
+      AIRFLOW__SMTP__SMTP_USER: "${SMTP_USER:-}"
+      AIRFLOW__SMTP__SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      AIRFLOW__SMTP__SMTP_MAIL_FROM: "${SMTP_USER:-airflow@localhost}"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./dbt:/opt/airflow/dbt
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - airflow-logs:/opt/airflow/logs
+    networks:
+      - food-delivery-net
+    command: scheduler
+
+  # ─────────────────────────────────────────────
+  # DATA GENERATOR — publishes to Pub/Sub
+  # ─────────────────────────────────────────────
+  generator:
+    build:
+      context: ./generator
+    container_name: generator
+    restart: unless-stopped
+    networks:
+      - food-delivery-net
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    environment:
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-project-739a3554-aa69-4eab-9e2}
+      GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID:-project-739a3554-aa69-4eab-9e2}
+      ORDERS_PER_MIN_PEAK: ${ORDERS_PER_MIN_PEAK:-5000}
+      ORDERS_PER_MIN_BASE: ${ORDERS_PER_MIN_BASE:-1200}
+      NUM_RIDERS: ${NUM_RIDERS:-200}
+      RIDER_GPS_INTERVAL_SEC: ${RIDER_GPS_INTERVAL_SEC:-30}
+
+  # ─────────────────────────────────────────────
+  # SPARK BATCH — daily one-shot (profile=batch, not auto-started)
+  # Trigger: docker compose -f docker-compose.gce.yml --profile batch run --rm spark-batch-daily
+  # ─────────────────────────────────────────────
+  spark-batch-daily:
+    build:
+      context: ./spark
+    container_name: spark-batch-daily
+    restart: "no"
+    profiles: ["batch"]
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    networks:
+      - food-delivery-net
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - --deploy-mode
+      - client
+      - --total-executor-cores
+      - "2"
+      - --executor-memory
+      - "512m"
+      - /opt/spark/jobs/batch_daily_summary.py
+
+  # ─────────────────────────────────────────────
+  # SPARK COMPACT — daily small-file compaction (profile=compact)
+  # Trigger: docker compose -f docker-compose.gce.yml --profile compact up -d spark-compact-daily
+  # ─────────────────────────────────────────────
+  spark-compact-daily:
+    build:
+      context: ./spark
+    container_name: spark-compact-daily
+    restart: unless-stopped
+    profiles: ["compact"]
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    networks:
+      - food-delivery-net
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        while true; do
+          TARGET=$(python3 -c "from datetime import datetime,timedelta,timezone; print((datetime.now(timezone.utc)-timedelta(days=1)).strftime('%Y-%m-%d'))")
+          echo "compact-daily starting for date=${TARGET}"
+          /opt/spark/bin/spark-submit \
+            --master spark://spark-master:7077 \
+            --deploy-mode client \
+            --total-executor-cores 2 \
+            --executor-memory 512m \
+            --driver-memory 512m \
+            --conf spark.ui.prometheus.enabled=true \
+            /opt/spark/jobs/compact_parquet.py --date "${TARGET}"
+          echo "compact-daily done for date=${TARGET}, sleeping 86400s"
+          sleep 86400
+        done
