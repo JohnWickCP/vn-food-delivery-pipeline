@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 
 from pyspark.sql import SparkSession
@@ -14,6 +13,15 @@ GCS_BUCKET      = "vn-food-delivery-lake-739a3554"
 INPUT_PATH      = f"gs://{GCS_BUCKET}/pubsub-raw/raw-orders/"
 OUTPUT_PATH     = f"gs://{GCS_BUCKET}/raw/orders/"
 CHECKPOINT_PATH = f"gs://{GCS_BUCKET}/checkpoints/orders/"
+METRICS_PATH    = f"gs://{GCS_BUCKET}/metrics/batch_skips/"
+
+
+def _append_skip_metric(spark: SparkSession, job: str, count: int) -> None:
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).isoformat()
+    (spark.createDataFrame([(ts, job, count)], ["ts", "job", "skip_count"])
+         .write.format("json").mode("append")
+         .save(METRICS_PATH))
 
 INPUT_SCHEMA = StructType([
     StructField("order_id",          StringType(),    False),
@@ -66,51 +74,63 @@ def main() -> None:
         .withColumn("day",   dayofmonth(col("event_timestamp")))
     )
 
+    batch_skip_count = 0
+
     def write_batch_with_timing(batch_df, epoch_id):
+        nonlocal batch_skip_count
         try:
             batch_df = batch_df.localCheckpoint(eager=True)
         except Exception as exc:
             exc_str = str(exc)
             if "Item not found" in exc_str or "generation is deleted" in exc_str:
-                print(f"BATCH_SKIP epoch={epoch_id} (stale GCS file, skipping)", flush=True)
+                batch_skip_count += 1
+                logger.warning(
+                    "BATCH_SKIP epoch=%s reason=stale_gcs_file skip_total=%d",
+                    epoch_id, batch_skip_count,
+                )
+                if batch_skip_count > 5:
+                    raise RuntimeError(
+                        f"Too many stale-file skips ({batch_skip_count}), aborting stream"
+                    ) from exc
                 return
             raise
 
         row_count = batch_df.count()
         if row_count == 0:
-            print(f"BATCH_SKIP epoch={epoch_id} (empty)", flush=True)
+            logger.info("BATCH_SKIP epoch=%s reason=empty", epoch_id)
             return
 
-        print(f"BATCH_START epoch={epoch_id} rows={row_count}", flush=True)
+        logger.info("BATCH_START epoch=%s rows=%d", epoch_id, row_count)
         t0 = time.perf_counter()
         try:
-            (batch_df.write
+            (batch_df.coalesce(1).write
                 .format("parquet")
                 .option("path", OUTPUT_PATH)
                 .partitionBy("year", "month", "day")
                 .mode("append")
                 .save())
             elapsed = time.perf_counter() - t0
-            msg = (
-                f"BATCH_TIMING epoch={epoch_id} rows={row_count} "
-                f"write_sec={elapsed:.3f} rows_per_sec={row_count/elapsed:.0f}"
+            logger.warning(
+                "BATCH_TIMING epoch=%s rows=%d write_sec=%.3f rows_per_sec=%.0f",
+                epoch_id, row_count, elapsed, row_count / elapsed,
             )
-            print(msg, flush=True)
-            logger.warning(msg)
         except Exception as exc:
-            print(f"BATCH_ERROR epoch={epoch_id} rows={row_count} error={exc}", flush=True)
-            logger.error("foreachBatch write failed epoch=%s", epoch_id, exc_info=True)
+            logger.error("foreachBatch write failed epoch=%s rows=%d", epoch_id, row_count, exc_info=True)
             raise
 
-    (
+    query = (
         orders.writeStream
         .foreachBatch(write_batch_with_timing)
         .option("checkpointLocation", CHECKPOINT_PATH)
-        .trigger(processingTime="500 milliseconds")
+        .trigger(availableNow=True)
         .outputMode("append")
         .start()
-        .awaitTermination()
     )
+    query.awaitTermination()
+
+    if batch_skip_count > 0:
+        logger.warning("RUN_COMPLETE job=stream-orders stale_skips=%d", batch_skip_count)
+        _append_skip_metric(spark, "stream-orders", batch_skip_count)
 
 
 if __name__ == "__main__":
