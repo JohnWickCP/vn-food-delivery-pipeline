@@ -1,0 +1,13 @@
+[
+  {"name": "event_id",        "type": "STRING",    "mode": "REQUIRED"},
+  {"name": "rider_id",        "type": "STRING",    "mode": "REQUIRED"},
+  {"name": "order_id",        "type": "STRING",    "mode": "NULLABLE"},
+  {"name": "city",            "type": "STRING",    "mode": "REQUIRED"},
+  {"name": "latitude",        "type": "FLOAT64",   "mode": "REQUIRED"},
+  {"name": "longitude",       "type": "FLOAT64",   "mode": "REQUIRED"},
+  {"name": "speed_kmh",       "type": "FLOAT64",   "mode": "REQUIRED"},
+  {"name": "status",          "type": "STRING",    "mode": "REQUIRED"},
+  {"name": "battery_pct",     "type": "INT64",     "mode": "REQUIRED"},
+  {"name": "event_timestamp", "type": "TIMESTAMP", "mode": "REQUIRED"},
+  {"name": "producer_ts",     "type": "FLOAT64",   "mode": "NULLABLE"}
+]
