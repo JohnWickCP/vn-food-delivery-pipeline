@@ -2,19 +2,20 @@ version: 2
 
 sources:
   - name: food_delivery
-    database: food_delivery
-    description: "Raw tables populated in real-time via ClickHouse Kafka Engine (v3 architecture). MinIO Parquet = cold storage / replay only."
+    database: project-739a3554-aa69-4eab-9e2
+    schema: food_delivery_raw
+    description: "Raw tables loaded from GCS JSONL (Pub/Sub subscriber output) via Airflow load_pubsub_to_bigquery DAG."
     tables:
       - name: raw_orders
-        description: "Orders emitted by the generator, partitioned by month"
+        description: "One row per order event. items is a JSON string: [{item_id, name, price_vnd, quantity}]"
         columns:
           - name: order_id
-            description: "UUID — primary key"
+            description: "UUID string — primary key"
           - name: items
             description: "JSON array string: [{item_id, name, price_vnd, quantity}]"
 
       - name: raw_payments
-        description: "One payment per order, processed 10s-3min after order event"
+        description: "One payment per order, processed 10s–3min after order event"
 
       - name: raw_rider_events
         description: "GPS pings every 30s per rider (200 riders)"

@@ -9,7 +9,7 @@ SELECT
     o.rider_id,
     o.city,
     o.district,
-    o.status                                                        AS order_status,
+    o.status                                                          AS order_status,
     o.total_vnd,
     o.total_k_vnd,
     o.payment_method,
@@ -18,15 +18,15 @@ SELECT
         WHEN o.placed_hour BETWEEN 11 AND 13 THEN 'lunch'
         WHEN o.placed_hour BETWEEN 18 AND 20 THEN 'dinner'
         ELSE 'off_peak'
-    END                                                             AS meal_period,
+    END                                                               AS meal_period,
     o.placed_at_local,
     o.placed_date,
     o.placed_hour,
     p.payment_id,
     p.payment_status,
-    p.amount_vnd                                                    AS payment_amount_vnd,
+    p.amount_vnd                                                      AS payment_amount_vnd,
     p.processed_at_local,
-    -- seconds from order placed to payment processed; greatest(0,...) guards against clock skew at emit
-    greatest(0, dateDiff('second', o.placed_at_local, p.processed_at_local)) AS payment_delay_seconds
+    -- seconds from order placed to payment processed; GREATEST(0,...) guards against clock skew at emit
+    GREATEST(0, DATETIME_DIFF(p.processed_at_local, o.placed_at_local, SECOND)) AS payment_delay_seconds
 FROM {{ ref('stg_orders') }} o
 LEFT JOIN {{ ref('stg_payments') }} p ON o.order_id = p.order_id
