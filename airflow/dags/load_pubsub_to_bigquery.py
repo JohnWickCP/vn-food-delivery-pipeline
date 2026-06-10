@@ -116,8 +116,9 @@ def _load_one(topic: str, table: str, schema: list[dict], ds: str) -> int:
         rows = load_job.output_rows
         logger.info("Loaded %d rows → %s (source=%s)", rows, destination, source_uri)
         return rows
-    except gcp_exc.BadRequest as exc:
-        if "No files to load" in str(exc) or "no files" in str(exc).lower():
+    except (gcp_exc.BadRequest, gcp_exc.NotFound) as exc:
+        msg = str(exc).lower()
+        if "no files" in msg or "not found: uris" in msg or "no files to load" in msg:
             logger.warning("No JSONL files found for topic=%s date=%s — skipping", topic, ds)
             return 0
         raise
