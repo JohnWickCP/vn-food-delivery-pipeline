@@ -85,29 +85,31 @@ _LOADS: list[tuple[str, str, list[dict]]] = [
 
 
 def _load_one(topic: str, table: str, schema: list[dict], ds: str) -> int:
-    """Load one day's JSONL files from GCS into a BigQuery partitioned table.
+    """Load one day's JSONL files from GCS into a BigQuery raw table.
 
-    Uses WRITE_TRUNCATE on the day partition so reruns are idempotent.
-    Returns row count loaded (0 if no files found for that day).
+    Uses WRITE_APPEND — subscriber files are bucketed by write date, not event
+    date, so rows span multiple partitions. Dedup happens downstream in dbt
+    incremental models (unique_key merge). Returns row count loaded (0 if no
+    files found for that day).
     """
     from google.api_core import exceptions as gcp_exc
     from google.cloud import bigquery
 
     year, month, day = ds.split("-")
-    partition = ds.replace("-", "")
     source_uri = (
         f"gs://{GCS_BUCKET}/pubsub-raw/{topic}/"
         f"year={year}/month={month}/day={day}/*.jsonl"
     )
-    destination = f"{GCP_PROJECT}.{BQ_DATASET}.{table}${partition}"
+    destination = f"{GCP_PROJECT}.{BQ_DATASET}.{table}"
 
     client = bigquery.Client(project=GCP_PROJECT)
     bq_schema = [bigquery.SchemaField(**f) for f in schema]
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+        write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
         schema=bq_schema,
         ignore_unknown_values=True,
+        create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
     )
 
     try:
