@@ -137,20 +137,21 @@ services:
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     command:
-      - /opt/spark/bin/spark-submit
-      - --master
-      - spark://spark-master:7077
-      - --deploy-mode
-      - client
-      - --total-executor-cores
-      - "1"
-      - --executor-memory
-      - "2G"
-      - --driver-memory
-      - "1G"
-      - --conf
-      - spark.ui.prometheus.enabled=true
-      - /opt/spark/jobs/stream_orders.py
+      - /bin/bash
+      - -c
+      - |
+        while true; do
+          /opt/spark/bin/spark-submit \
+            --master spark://spark-master:7077 \
+            --deploy-mode client \
+            --total-executor-cores 1 \
+            --executor-memory 2G \
+            --driver-memory 1G \
+            --conf spark.ui.prometheus.enabled=true \
+            /opt/spark/jobs/stream_orders.py
+          echo "stream-orders done, sleeping 300s before next run"
+          sleep 300
+        done
 
   spark-streaming-payments:
     build:
@@ -171,20 +172,21 @@ services:
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     command:
-      - /opt/spark/bin/spark-submit
-      - --master
-      - spark://spark-master:7077
-      - --deploy-mode
-      - client
-      - --total-executor-cores
-      - "1"
-      - --executor-memory
-      - "2G"
-      - --driver-memory
-      - "1G"
-      - --conf
-      - spark.ui.prometheus.enabled=true
-      - /opt/spark/jobs/stream_payments.py
+      - /bin/bash
+      - -c
+      - |
+        while true; do
+          /opt/spark/bin/spark-submit \
+            --master spark://spark-master:7077 \
+            --deploy-mode client \
+            --total-executor-cores 1 \
+            --executor-memory 2G \
+            --driver-memory 1G \
+            --conf spark.ui.prometheus.enabled=true \
+            /opt/spark/jobs/stream_payments.py
+          echo "stream-payments done, sleeping 300s before next run"
+          sleep 300
+        done
 
   spark-streaming-rider-events:
     build:
@@ -205,20 +207,21 @@ services:
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
     command:
-      - /opt/spark/bin/spark-submit
-      - --master
-      - spark://spark-master:7077
-      - --deploy-mode
-      - client
-      - --total-executor-cores
-      - "1"
-      - --executor-memory
-      - "2G"
-      - --driver-memory
-      - "1G"
-      - --conf
-      - spark.ui.prometheus.enabled=true
-      - /opt/spark/jobs/stream_rider_events.py
+      - /bin/bash
+      - -c
+      - |
+        while true; do
+          /opt/spark/bin/spark-submit \
+            --master spark://spark-master:7077 \
+            --deploy-mode client \
+            --total-executor-cores 1 \
+            --executor-memory 2G \
+            --driver-memory 1G \
+            --conf spark.ui.prometheus.enabled=true \
+            /opt/spark/jobs/stream_rider_events.py
+          echo "stream-rider-events done, sleeping 300s before next run"
+          sleep 300
+        done
 
   # ─────────────────────────────────────────────
   # AIRFLOW POSTGRES — metadata DB only (not DWH)
@@ -394,4 +397,46 @@ services:
       - --executor-memory
       - "2G"
       - /opt/spark/jobs/batch_daily_summary.py
+
+  # ─────────────────────────────────────────────
+  # SPARK COMPACT — daily small-file compaction
+  # Runs automatically every 24h; merges small Parquet files per day-partition into 1 file
+  # Always-on when started: docker compose --profile compact up -d spark-compact-daily
+  # One-shot manual:        docker compose --profile compact run --rm spark-compact-daily
+  # ─────────────────────────────────────────────
+  spark-compact-daily:
+    build:
+      context: ./spark
+    container_name: spark-compact-daily
+    restart: unless-stopped
+    profiles: ["compact"]
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    networks:
+      - food-delivery-net
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ${GOOGLE_ADC_PATH}:/tmp/gcp-adc.json:ro
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-adc.json
+    command:
+      - /bin/bash
+      - -c
+      - |
+        while true; do
+          TARGET=$(python3 -c "from datetime import datetime,timedelta,timezone; print((datetime.now(timezone.utc)-timedelta(days=1)).strftime('%Y-%m-%d'))")
+          echo "compact-daily starting for date=${TARGET}"
+          /opt/spark/bin/spark-submit \
+            --master spark://spark-master:7077 \
+            --deploy-mode client \
+            --total-executor-cores 2 \
+            --executor-memory 2G \
+            --driver-memory 1G \
+            --conf spark.ui.prometheus.enabled=true \
+            /opt/spark/jobs/compact_parquet.py --date "${TARGET}"
+          echo "compact-daily done for date=${TARGET}, sleeping 86400s"
+          sleep 86400
+        done
 
